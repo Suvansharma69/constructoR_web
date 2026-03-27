@@ -43,7 +43,18 @@ export default function ProfessionalDashboard() {
   return (
     <div>
       {/* Header card */}
-      <div className="card" style={{marginBottom:28,background:'linear-gradient(135deg,rgba(37,99,235,0.15),rgba(79,70,229,0.1))'}}>
+      <div className="card" style={{
+        marginBottom:28,
+        background:'linear-gradient(135deg,rgba(37,99,235,0.15),rgba(79,70,229,0.1))',
+        animation: 'slideUp 0.5s ease-out',
+        position: 'relative', overflow: 'hidden',
+      }}>
+        {/* Shimmer overlay */}
+        <div style={{
+          position:'absolute', inset:0,
+          background:'linear-gradient(90deg, transparent, rgba(37,99,235,0.06), transparent)',
+          backgroundSize:'200% 100%', animation:'shimmer 4s linear infinite',
+        }} />
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:12}}>
           <div>
             <div style={{fontSize:14,color:'var(--text-muted)',marginBottom:4}}>Welcome Back 👷</div>
@@ -59,7 +70,7 @@ export default function ProfessionalDashboard() {
       {/* Stats */}
       <div className="stats-grid" style={{marginBottom:28}}>
         {stats.map((s,i) => (
-          <div className="stat-card" key={i}>
+          <div className="stat-card" key={i} style={{ animation: `countUp 0.4s ease-out ${0.2 + i * 0.1}s backwards` }}>
             <div className="stat-icon-wrap" style={{background:s.bg,fontSize:24}}>{s.icon}</div>
             <div className="stat-value" style={{color:s.color}}>{s.value}</div>
             <div className="stat-label">{s.label}</div>
