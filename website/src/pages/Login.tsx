@@ -2,7 +2,13 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import { useToast } from '../components/Toast'
-import { sendOTP, verifyOTP } from '../api/api'
+import { firebaseLogin } from '../api/api'
+import {
+  auth,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendEmailVerification,
+} from '../lib/firebase'
 
 const ROLES = [
   { id: 'homeowner', emoji: '🏠', name: 'Home Owner', desc: 'Build or renovate your home' },
@@ -12,7 +18,7 @@ const ROLES = [
   { id: 'vendor', emoji: '🏪', name: 'Material Vendor', desc: 'Sell construction materials' },
 ]
 
-type Step = 'contact' | 'role' | 'otp'
+type Step = 'contact' | 'role' | 'auth'
 
 /* Floating particle component */
 function Particles() {
@@ -51,22 +57,20 @@ export default function Login() {
   const { toast } = useToast()
 
   const [step, setStep] = useState<Step>('contact')
-  const [contactType, setContactType] = useState<'phone' | 'email'>('phone')
-  const [contact, setContact] = useState('')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
   const [role, setRole] = useState('')
-  const [otp, setOtp] = useState('')
+  const [isSignUp, setIsSignUp] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [name, setName] = useState('')
 
-  const validateContact = (): boolean => {
-    if (!contact.trim()) {
-      toast('Please enter your contact', 'error')
+  const validateEmail = (): boolean => {
+    if (!email.trim()) {
+      toast('Please enter your email', 'error')
       return false
     }
-    if (contactType === 'phone' && !/^\d{10}$/.test(contact)) {
-      toast('Enter a valid 10-digit phone number', 'error')
-      return false
-    }
-    if (contactType === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(contact)) {
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       toast('Enter a valid email address', 'error')
       return false
     }
@@ -74,32 +78,51 @@ export default function Login() {
   }
 
   const handleContinueToRole = () => {
-    if (!validateContact()) return
+    if (!validateEmail()) return
     setStep('role')
   }
 
-  const handleSendOTP = async () => {
-    if (!validateContact()) return
+  const handleContinueToAuth = () => {
     if (!role) return toast('Please select your role', 'error')
-    setLoading(true)
-    try {
-      const res = await sendOTP(contact, contactType)
-      toast(`OTP sent! (Mock OTP: ${res.data.mock_otp || '123456'})`, 'success')
-      setStep('otp')
-    } catch (e: any) {
-      toast(e.response?.data?.detail || 'Failed to send OTP', 'error')
-    } finally {
-      setLoading(false)
-    }
+    setStep('auth')
   }
 
-  const handleVerifyOTP = async () => {
-    if (!otp.trim()) return toast('Please enter the OTP', 'error')
+  const handleAuth = async () => {
+    if (!password.trim() || password.length < 6) {
+      return toast('Password must be at least 6 characters', 'error')
+    }
+
+    if (isSignUp) {
+      if (!name.trim()) return toast('Please enter your full name', 'error')
+      if (password !== confirmPassword) return toast('Passwords do not match', 'error')
+    }
+
     setLoading(true)
     try {
-      const res = await verifyOTP(contact, otp, role)
+      let firebaseUser
+
+      if (isSignUp) {
+        // Create account with Firebase
+        const cred = await createUserWithEmailAndPassword(auth, email, password)
+        firebaseUser = cred.user
+
+        // Send verification email
+        await sendEmailVerification(firebaseUser)
+        toast('Verification email sent! Please check your inbox.', 'success')
+      } else {
+        // Sign in with Firebase
+        const cred = await signInWithEmailAndPassword(auth, email, password)
+        firebaseUser = cred.user
+      }
+
+      // Get Firebase ID token
+      const idToken = await firebaseUser.getIdToken()
+
+      // Send to our backend to create/login user
+      const res = await firebaseLogin(idToken, role, isSignUp ? name : undefined)
       const u = res.data.user
       login(u, res.data.token)
+
       if (!u.profile_completed) {
         navigate('/profile-setup')
       } else {
@@ -108,7 +131,25 @@ export default function Login() {
         else navigate('/professional/dashboard')
       }
     } catch (e: any) {
-      toast(e.response?.data?.detail || 'Invalid OTP', 'error')
+      const code = e?.code || ''
+      const msg = e?.response?.data?.detail || e?.message || 'Authentication failed'
+
+      // Friendly Firebase error messages
+      if (code === 'auth/email-already-in-use') {
+        toast('This email is already registered. Try signing in instead.', 'error')
+        setIsSignUp(false)
+      } else if (code === 'auth/user-not-found' || code === 'auth/invalid-credential') {
+        toast('No account found with this email. Please sign up first.', 'error')
+        setIsSignUp(true)
+      } else if (code === 'auth/wrong-password') {
+        toast('Incorrect password. Please try again.', 'error')
+      } else if (code === 'auth/too-many-requests') {
+        toast('Too many attempts. Please try again later.', 'error')
+      } else if (code === 'auth/weak-password') {
+        toast('Password is too weak. Use at least 6 characters.', 'error')
+      } else {
+        toast(msg, 'error')
+      }
     } finally {
       setLoading(false)
     }
@@ -117,12 +158,14 @@ export default function Login() {
   const handleBackToContact = () => {
     setStep('contact')
     setRole('')
-    setOtp('')
+    setPassword('')
+    setConfirmPassword('')
   }
 
   const handleBackToRole = () => {
     setStep('role')
-    setOtp('')
+    setPassword('')
+    setConfirmPassword('')
   }
 
   return (
@@ -159,42 +202,42 @@ export default function Login() {
             <div className="auth-logo-sub">Your Complete Construction Platform</div>
           </div>
 
+        {/* Step 1: Email */}
         {step === 'contact' && (
           <div style={{ animation: 'slideUp 0.4s ease-out' }}>
-            <div className="auth-step-title">Get Started</div>
-            <div className="auth-step-sub">Enter your contact details</div>
-            <div className="toggle-group">
-              <button
-                className={`toggle-btn ${contactType === 'phone' ? 'active' : ''}`}
-                onClick={() => { setContactType('phone'); setContact('') }}
-              >
-                📞 Phone
-              </button>
-              <button
-                className={`toggle-btn ${contactType === 'email' ? 'active' : ''}`}
-                onClick={() => { setContactType('email'); setContact('') }}
-              >
-                ✉️ Email
-              </button>
-            </div>
+            <div className="auth-step-title">{isSignUp ? 'Create Account' : 'Welcome Back'}</div>
+            <div className="auth-step-sub">{isSignUp ? 'Enter your email to get started' : 'Sign in to your account'}</div>
             <div className="form-group">
-              <label className="form-label">{contactType === 'phone' ? 'Mobile Number' : 'Email Address'}</label>
+              <label className="form-label">Email Address</label>
               <input
                 className="form-input"
-                placeholder={contactType === 'phone' ? '10-digit number' : 'you@example.com'}
-                value={contact}
-                onChange={e => setContact(e.target.value)}
-                type={contactType === 'email' ? 'email' : 'tel'}
-                maxLength={contactType === 'phone' ? 10 : undefined}
+                placeholder="you@example.com"
+                value={email}
+                onChange={e => setEmail(e.target.value)}
+                type="email"
                 onKeyDown={e => e.key === 'Enter' && handleContinueToRole()}
               />
             </div>
             <button className="btn btn-primary btn-full" onClick={handleContinueToRole}>
               Continue →
             </button>
+            <div style={{ textAlign: 'center', marginTop: 16, fontSize: 14, color: 'var(--text-muted)' }}>
+              {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
+              <button
+                onClick={() => setIsSignUp(!isSignUp)}
+                style={{
+                  background: 'none', color: 'var(--primary-light)',
+                  fontSize: 14, fontWeight: 700, textDecoration: 'underline',
+                  cursor: 'pointer',
+                }}
+              >
+                {isSignUp ? 'Sign In' : 'Sign Up'}
+              </button>
+            </div>
           </div>
         )}
 
+        {/* Step 2: Role Selection */}
         {step === 'role' && (
           <div style={{ animation: 'slideUp 0.4s ease-out' }}>
             <div className="auth-step-title">Who are you?</div>
@@ -215,10 +258,10 @@ export default function Login() {
             </div>
             <button
               className="btn btn-primary btn-full"
-              onClick={handleSendOTP}
-              disabled={!role || loading}
+              onClick={handleContinueToAuth}
+              disabled={!role}
             >
-              {loading ? 'Sending...' : 'Send OTP'}
+              Continue →
             </button>
             <button
               className="btn btn-outline btn-full"
@@ -230,33 +273,73 @@ export default function Login() {
           </div>
         )}
 
-        {step === 'otp' && (
+        {/* Step 3: Password Auth */}
+        {step === 'auth' && (
           <div style={{ animation: 'slideUp 0.4s ease-out' }}>
-            <div className="auth-step-title">Verify OTP</div>
-            <div className="auth-step-sub">Sent to {contact}</div>
-            <div className="form-group">
-              <label className="form-label">6-digit OTP</label>
+            <div className="auth-step-title">{isSignUp ? 'Create Your Account' : 'Sign In'}</div>
+            <div className="auth-step-sub" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span style={{
+                background: 'var(--primary)', color: 'white', padding: '2px 8px',
+                borderRadius: 12, fontSize: 12, fontWeight: 700,
+              }}>{email}</span>
+            </div>
+
+            {isSignUp && (
+              <div className="form-group" style={{ marginTop: 16 }}>
+                <label className="form-label">Full Name</label>
+                <input
+                  className="form-input"
+                  placeholder="Your full name"
+                  value={name}
+                  onChange={e => setName(e.target.value)}
+                  type="text"
+                />
+              </div>
+            )}
+
+            <div className="form-group" style={{ marginTop: isSignUp ? 0 : 16 }}>
+              <label className="form-label">Password</label>
               <input
                 className="form-input"
-                placeholder="Enter OTP (123456 for testing)"
-                value={otp}
-                onChange={e => setOtp(e.target.value)}
-                type="number"
-                maxLength={6}
-                onKeyDown={e => e.key === 'Enter' && handleVerifyOTP()}
+                placeholder={isSignUp ? 'Create a password (min 6 chars)' : 'Enter your password'}
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                type="password"
+                onKeyDown={e => e.key === 'Enter' && !isSignUp && handleAuth()}
               />
             </div>
-            <button className="btn btn-primary btn-full" onClick={handleVerifyOTP} disabled={loading}>
-              {loading ? 'Verifying...' : 'Verify & Continue →'}
+
+            {isSignUp && (
+              <div className="form-group">
+                <label className="form-label">Confirm Password</label>
+                <input
+                  className="form-input"
+                  placeholder="Re-enter your password"
+                  value={confirmPassword}
+                  onChange={e => setConfirmPassword(e.target.value)}
+                  type="password"
+                  onKeyDown={e => e.key === 'Enter' && handleAuth()}
+                />
+              </div>
+            )}
+
+            <button className="btn btn-primary btn-full" onClick={handleAuth} disabled={loading}>
+              {loading
+                ? (isSignUp ? 'Creating Account...' : 'Signing In...')
+                : (isSignUp ? '🚀 Create Account' : '🔓 Sign In')
+              }
             </button>
-            <button
-              className="btn btn-outline btn-full"
-              style={{ marginTop: 10 }}
-              onClick={handleSendOTP}
-              disabled={loading}
-            >
-              Resend OTP
-            </button>
+
+            {isSignUp && (
+              <div style={{
+                marginTop: 12, padding: 12, borderRadius: 10,
+                background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)',
+                fontSize: 12, color: 'var(--secondary-light)', textAlign: 'center',
+              }}>
+                📧 A verification email will be sent to confirm your account
+              </div>
+            )}
+
             <button
               className="btn btn-outline btn-full"
               style={{ marginTop: 10 }}

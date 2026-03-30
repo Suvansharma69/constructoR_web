@@ -24,40 +24,24 @@ const isMockable = (err: any): boolean => {
   return !err.response
 }
 
-// ============ Auth ============
-const MOCK_OTP = '123456'
-
-export const sendOTP = async (contact: string, contact_type: string) => {
+// ============ Auth (Firebase) ============
+export const firebaseLogin = async (idToken: string, role: string, name?: string) => {
   try {
-    return await api.post('/auth/send-otp', { contact, contact_type })
-  } catch (err) {
-    if (isMockable(err)) {
-      return { data: { mock_otp: MOCK_OTP, mocked: true } }
-    }
-    throw err
-  }
-}
-
-export const verifyOTP = async (contact: string, otp: string, role: string) => {
-  try {
-    return await api.post('/auth/verify-otp', { contact, otp, role })
+    return await api.post('/auth/firebase-login', { idToken, role, name })
   } catch (err: any) {
     if (isMockable(err)) {
-      if (otp !== MOCK_OTP) {
-        throw { response: { data: { detail: `Invalid OTP. Use ${MOCK_OTP} in mock mode` } } }
-      }
-      const isEmail = contact.includes('@')
+      // Mock fallback when backend is offline
       return {
         data: {
           token: `mock-token-${Date.now()}`,
           user: {
             _id: `mock-${role}-${Date.now()}`,
-            contact,
-            contact_type: isEmail ? 'email' : 'phone',
+            contact: 'mock@user.com',
+            contact_type: 'email',
             role,
             profile_completed: false,
+            email_verified: false,
           },
-          mocked: true,
         },
       }
     }
