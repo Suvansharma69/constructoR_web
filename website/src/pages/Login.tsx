@@ -51,6 +51,37 @@ function Particles() {
   )
 }
 
+/* Floating particle component */
+function Particles() {
+  const particles = Array.from({ length: 20 }, (_, i) => ({
+    id: i,
+    left: Math.random() * 100,
+    size: Math.random() * 4 + 2,
+    delay: Math.random() * 15,
+    duration: Math.random() * 10 + 15,
+    opacity: Math.random() * 0.3 + 0.1,
+  }))
+  return (
+    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0 }}>
+      {particles.map(p => (
+        <div
+          key={p.id}
+          style={{
+            position: 'absolute',
+            left: `${p.left}%`,
+            bottom: '-10px',
+            width: p.size,
+            height: p.size,
+            borderRadius: '50%',
+            background: `rgba(59, 130, 246, ${p.opacity})`,
+            animation: `particleFloat ${p.duration}s linear ${p.delay}s infinite`,
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
 export default function Login() {
   const navigate = useNavigate()
   const { login } = useAuth()
@@ -207,6 +238,22 @@ export default function Login() {
           <div style={{ animation: 'slideUp 0.4s ease-out' }}>
             <div className="auth-step-title">{isSignUp ? 'Create Account' : 'Welcome Back'}</div>
             <div className="auth-step-sub">{isSignUp ? 'Enter your email to get started' : 'Sign in to your account'}</div>
+            <div className="auth-step-title">Get Started</div>
+            <div className="auth-step-sub">Enter your contact details</div>
+            <div className="toggle-group">
+              <button
+                className={`toggle-btn ${contactType === 'phone' ? 'active' : ''}`}
+                onClick={() => { setContactType('phone'); setContact('') }}
+              >
+                📞 Phone
+              </button>
+              <button
+                className={`toggle-btn ${contactType === 'email' ? 'active' : ''}`}
+                onClick={() => { setContactType('email'); setContact('') }}
+              >
+                ✉️ Email
+              </button>
+            </div>
             <div className="form-group">
               <label className="form-label">Email Address</label>
               <input
@@ -299,6 +346,12 @@ export default function Login() {
 
             <div className="form-group" style={{ marginTop: isSignUp ? 0 : 16 }}>
               <label className="form-label">Password</label>
+        {step === 'otp' && (
+          <div style={{ animation: 'slideUp 0.4s ease-out' }}>
+            <div className="auth-step-title">Verify OTP</div>
+            <div className="auth-step-sub">Sent to {contact}</div>
+            <div className="form-group">
+              <label className="form-label">6-digit OTP</label>
               <input
                 className="form-input"
                 placeholder={isSignUp ? 'Create a password (min 6 chars)' : 'Enter your password'}
