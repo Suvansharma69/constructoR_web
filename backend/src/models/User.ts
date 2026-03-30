@@ -2,10 +2,12 @@ import mongoose, { Schema, Document } from 'mongoose'
 
 export interface IUser extends Document {
   _id: string
+  firebase_uid?: string
   contact: string
   contact_type: 'phone' | 'email'
   role: 'homeowner' | 'architect' | 'contractor' | 'interior_designer' | 'vendor'
   profile_completed: boolean
+  email_verified?: boolean
   profile?: {
     name?: string
     city?: string
@@ -26,10 +28,12 @@ export interface IUser extends Document {
 }
 
 const UserSchema = new Schema<IUser>({
+  firebase_uid: { type: String, sparse: true },
   contact: { type: String, required: true, unique: true },
   contact_type: { type: String, enum: ['phone', 'email'], required: true },
   role: { type: String, enum: ['homeowner', 'architect', 'contractor', 'interior_designer', 'vendor'], required: true },
   profile_completed: { type: Boolean, default: false },
+  email_verified: { type: Boolean, default: false },
   profile: {
     name: String,
     city: String,
@@ -51,3 +55,29 @@ const UserSchema = new Schema<IUser>({
 UserSchema.index({ role: 1, 'profile.city': 1 })
 
 export default mongoose.model<IUser>('User', UserSchema)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
