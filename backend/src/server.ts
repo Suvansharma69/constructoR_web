@@ -24,17 +24,40 @@ const __dirname = path.dirname(__filename)
 
 const app = express()
 const httpServer = createServer(app)
+
+// Build list of allowed origins from env
+const allowedOrigins: string[] = [
+  'http://localhost:3000',
+  'http://localhost:5173',
+]
+if (process.env.FRONTEND_URL) {
+  process.env.FRONTEND_URL.split(',').forEach(o => allowedOrigins.push(o.trim()))
+}
+
+const corsOptions = {
+  origin: (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
+    // Allow requests with no origin (e.g. mobile apps, curl, Render health checks)
+    if (!origin || allowedOrigins.includes(origin)) return cb(null, true)
+    cb(new Error(`CORS blocked: ${origin}`))
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}
+
 const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:5173',
+    origin: allowedOrigins,
     methods: ['GET', 'POST'],
+    credentials: true,
   },
 })
 
 const PORT = process.env.PORT || 8000
 
 // Middleware
-app.use(cors())
+app.use(cors(corsOptions))
+app.options('*', cors(corsOptions)) // pre-flight
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
 

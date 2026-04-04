@@ -119,7 +119,8 @@ router.post('/send-otp', async (req, res) => {
 
     res.json({
       message: 'OTP sent successfully',
-      mock_otp: otp, // Only for development
+      // Only expose OTP in development — never in production
+      ...(process.env.NODE_ENV !== 'production' && { mock_otp: otp }),
     })
   } catch (error) {
     console.error('Send OTP error:', error)

@@ -1,8 +1,35 @@
+# Dependencies
 node_modules/
 **/node_modules/
+
+# Build outputs
 dist/
 build/
+backend/dist/
+
+# Environment files (NEVER commit these)
 .env
 .env.*
 !.env.example
+
+# Sensitive files
+backend/firebase-service-account.json
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.swp
+
+# Uploads (ephemeral on Render free tier)
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# Backup
 .git_website_backup/

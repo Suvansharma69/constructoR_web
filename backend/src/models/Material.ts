@@ -1,7 +1,7 @@
-import mongoose, { Schema, Document } from 'mongoose'
+import mongoose, { Schema, Types, Document } from 'mongoose'
 
 export interface IMaterial extends Document {
-  _id: string
+  _id: Types.ObjectId
   vendor_id: mongoose.Types.ObjectId
   name: string
   category: string

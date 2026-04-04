@@ -1,7 +1,7 @@
-import mongoose, { Schema, Document } from 'mongoose'
+import mongoose, { Schema, Types, Document } from 'mongoose'
 
 export interface IMessage extends Document {
-  _id: string
+  _id: Types.ObjectId
   sender_id: mongoose.Types.ObjectId
   receiver_id: mongoose.Types.ObjectId
   message: string

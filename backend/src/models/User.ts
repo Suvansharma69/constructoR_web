@@ -1,7 +1,7 @@
-import mongoose, { Schema, Document } from 'mongoose'
+import mongoose, { Schema, Types, Document } from 'mongoose'
 
 export interface IUser extends Document {
-  _id: string
+  _id: Types.ObjectId
   firebase_uid?: string
   contact: string
   contact_type: 'phone' | 'email'

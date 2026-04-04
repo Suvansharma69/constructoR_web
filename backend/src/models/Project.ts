@@ -1,7 +1,7 @@
-import mongoose, { Schema, Document } from 'mongoose'
+import mongoose, { Schema, Types, Document } from 'mongoose'
 
 export interface IProject extends Document {
-  _id: string
+  _id: Types.ObjectId
   user_id: mongoose.Types.ObjectId
   project_type: string
   title: string
