@@ -50,4 +50,4 @@ size limit for
 this warning via bu
 ild.chunkSizeWarnin
 gLimit.[39m
-[32mΓ£ô built in 1.90s[39m
+[32mΓ£ô built in 1.79s[39m

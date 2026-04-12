@@ -1,0 +1,30 @@
+﻿
+> buildease-web@1.0.0 build
+> tsc -b && vite build
+
+node.exe : 'tsc' 
+is not recognized 
+as an internal or 
+external command,
+At C:\Program Files
+\nodejs\npm.ps1:29 
+char:3
++   & $NODE_EXE 
+$NPM_CLI_JS $args
++   ~~~~~~~~~~~~~~~
+~~~~~~~~~~~~~~
+    + CategoryInfo 
+             : No  
+  tSpecified: ('   
+ tsc' is not re    
+...ternal comm    
+and,:String) [    
+], RemoteExcep    
+tion
+    + FullyQualifi 
+   edErrorId : Na  
+  tiveCommandErr   
+ or
+ 
+operable program 
+or batch file.
