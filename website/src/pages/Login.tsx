@@ -20,38 +20,6 @@ const ROLES = [
 
 type Step = 'contact' | 'role' | 'auth'
 
-/* Floating particle component */
-function Particles() {
-  const particles = Array.from({ length: 20 }, (_, i) => ({
-    id: i,
-    left: Math.random() * 100,
-    size: Math.random() * 4 + 2,
-    delay: Math.random() * 15,
-    duration: Math.random() * 10 + 15,
-    opacity: Math.random() * 0.3 + 0.1,
-  }))
-  return (
-    <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0 }}>
-      {particles.map(p => (
-        <div
-          key={p.id}
-          style={{
-            position: 'absolute',
-            left: `${p.left}%`,
-            bottom: '-10px',
-            width: p.size,
-            height: p.size,
-            borderRadius: '50%',
-            background: `rgba(59, 130, 246, ${p.opacity})`,
-            animation: `particleFloat ${p.duration}s linear ${p.delay}s infinite`,
-          }}
-        />
-      ))}
-    </div>
-  )
-}
-
-/* Floating particle component */
 function Particles() {
   const particles = Array.from({ length: 20 }, (_, i) => ({
     id: i,
@@ -133,23 +101,16 @@ export default function Login() {
       let firebaseUser
 
       if (isSignUp) {
-        // Create account with Firebase
         const cred = await createUserWithEmailAndPassword(auth, email, password)
         firebaseUser = cred.user
-
-        // Send verification email
         await sendEmailVerification(firebaseUser)
         toast('Verification email sent! Please check your inbox.', 'success')
       } else {
-        // Sign in with Firebase
         const cred = await signInWithEmailAndPassword(auth, email, password)
         firebaseUser = cred.user
       }
 
-      // Get Firebase ID token
       const idToken = await firebaseUser.getIdToken()
-
-      // Send to our backend to create/login user
       const res = await firebaseLogin(idToken, role, isSignUp ? name : undefined)
       const u = res.data.user
       login(u, res.data.token)
@@ -165,7 +126,6 @@ export default function Login() {
       const code = e?.code || ''
       const msg = e?.response?.data?.detail || e?.message || 'Authentication failed'
 
-      // Friendly Firebase error messages
       if (code === 'auth/email-already-in-use') {
         toast('This email is already registered. Try signing in instead.', 'error')
         setIsSignUp(false)
@@ -209,20 +169,15 @@ export default function Login() {
           <p className="auth-hero-desc">Connecting professionals, vendors, and clients in one seamless premium marketplace.</p>
           <div style={{ display: 'flex', gap: 20, marginTop: 28 }}>
             {[{ val: '500+', label: 'Professionals' }, { val: '1000+', label: 'Projects' }, { val: '50+', label: 'Cities' }].map((s, i) => (
-              <div key={i} style={{
-                textAlign: 'center',
-                animation: `countUp 0.5s ease-out ${0.3 + i * 0.15}s backwards`,
-              }}>
-                <div style={{
-                  fontSize: 28, fontWeight: 900, color: 'white',
-                  fontFamily: 'Outfit, sans-serif',
-                }}>{s.val}</div>
+              <div key={i} style={{ textAlign: 'center', animation: `countUp 0.5s ease-out ${0.3 + i * 0.15}s backwards` }}>
+                <div style={{ fontSize: 28, fontWeight: 900, color: 'white', fontFamily: 'Outfit, sans-serif' }}>{s.val}</div>
                 <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.7)', marginTop: 2 }}>{s.label}</div>
               </div>
             ))}
           </div>
         </div>
       </div>
+
       <div className="auth-form-side">
         <Particles />
         <div className="auth-orb auth-orb-1" />
@@ -233,176 +188,137 @@ export default function Login() {
             <div className="auth-logo-sub">Your Complete Construction Platform</div>
           </div>
 
-        {/* Step 1: Email */}
-        {step === 'contact' && (
-          <div style={{ animation: 'slideUp 0.4s ease-out' }}>
-            <div className="auth-step-title">{isSignUp ? 'Create Account' : 'Welcome Back'}</div>
-            <div className="auth-step-sub">{isSignUp ? 'Enter your email to get started' : 'Sign in to your account'}</div>
-            <div className="auth-step-title">Get Started</div>
-            <div className="auth-step-sub">Enter your contact details</div>
-            <div className="toggle-group">
-              <button
-                className={`toggle-btn ${contactType === 'phone' ? 'active' : ''}`}
-                onClick={() => { setContactType('phone'); setContact('') }}
-              >
-                📞 Phone
-              </button>
-              <button
-                className={`toggle-btn ${contactType === 'email' ? 'active' : ''}`}
-                onClick={() => { setContactType('email'); setContact('') }}
-              >
-                ✉️ Email
-              </button>
-            </div>
-            <div className="form-group">
-              <label className="form-label">Email Address</label>
-              <input
-                className="form-input"
-                placeholder="you@example.com"
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                type="email"
-                onKeyDown={e => e.key === 'Enter' && handleContinueToRole()}
-              />
-            </div>
-            <button className="btn btn-primary btn-full" onClick={handleContinueToRole}>
-              Continue →
-            </button>
-            <div style={{ textAlign: 'center', marginTop: 16, fontSize: 14, color: 'var(--text-muted)' }}>
-              {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
-              <button
-                onClick={() => setIsSignUp(!isSignUp)}
-                style={{
-                  background: 'none', color: 'var(--primary-light)',
-                  fontSize: 14, fontWeight: 700, textDecoration: 'underline',
-                  cursor: 'pointer',
-                }}
-              >
-                {isSignUp ? 'Sign In' : 'Sign Up'}
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Step 2: Role Selection */}
-        {step === 'role' && (
-          <div style={{ animation: 'slideUp 0.4s ease-out' }}>
-            <div className="auth-step-title">Who are you?</div>
-            <div className="auth-step-sub">Select your role to continue</div>
-            <div className="roles-grid">
-              {ROLES.map((r, i) => (
-                <button
-                  key={r.id}
-                  className={`role-btn ${role === r.id ? 'selected' : ''}`}
-                  onClick={() => setRole(r.id)}
-                  style={{ animation: `scaleIn 0.3s ease-out ${i * 0.06}s backwards` }}
-                >
-                  <span className="role-emoji">{r.emoji}</span>
-                  <span className="role-name">{r.name}</span>
-                  <span className="role-desc">{r.desc}</span>
-                </button>
-              ))}
-            </div>
-            <button
-              className="btn btn-primary btn-full"
-              onClick={handleContinueToAuth}
-              disabled={!role}
-            >
-              Continue →
-            </button>
-            <button
-              className="btn btn-outline btn-full"
-              style={{ marginTop: 10 }}
-              onClick={handleBackToContact}
-            >
-              ← Back
-            </button>
-          </div>
-        )}
-
-        {/* Step 3: Password Auth */}
-        {step === 'auth' && (
-          <div style={{ animation: 'slideUp 0.4s ease-out' }}>
-            <div className="auth-step-title">{isSignUp ? 'Create Your Account' : 'Sign In'}</div>
-            <div className="auth-step-sub" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span style={{
-                background: 'var(--primary)', color: 'white', padding: '2px 8px',
-                borderRadius: 12, fontSize: 12, fontWeight: 700,
-              }}>{email}</span>
-            </div>
-
-            {isSignUp && (
-              <div className="form-group" style={{ marginTop: 16 }}>
-                <label className="form-label">Full Name</label>
-                <input
-                  className="form-input"
-                  placeholder="Your full name"
-                  value={name}
-                  onChange={e => setName(e.target.value)}
-                  type="text"
-                />
-              </div>
-            )}
-
-            <div className="form-group" style={{ marginTop: isSignUp ? 0 : 16 }}>
-              <label className="form-label">Password</label>
-        {step === 'otp' && (
-          <div style={{ animation: 'slideUp 0.4s ease-out' }}>
-            <div className="auth-step-title">Verify OTP</div>
-            <div className="auth-step-sub">Sent to {contact}</div>
-            <div className="form-group">
-              <label className="form-label">6-digit OTP</label>
-              <input
-                className="form-input"
-                placeholder={isSignUp ? 'Create a password (min 6 chars)' : 'Enter your password'}
-                value={password}
-                onChange={e => setPassword(e.target.value)}
-                type="password"
-                onKeyDown={e => e.key === 'Enter' && !isSignUp && handleAuth()}
-              />
-            </div>
-
-            {isSignUp && (
+          {/* Step 1: Email */}
+          {step === 'contact' && (
+            <div style={{ animation: 'slideUp 0.4s ease-out' }}>
+              <div className="auth-step-title">{isSignUp ? 'Create Account' : 'Welcome Back'}</div>
+              <div className="auth-step-sub">{isSignUp ? 'Enter your email to get started' : 'Sign in to your account'}</div>
               <div className="form-group">
-                <label className="form-label">Confirm Password</label>
+                <label className="form-label">Email Address</label>
                 <input
                   className="form-input"
-                  placeholder="Re-enter your password"
-                  value={confirmPassword}
-                  onChange={e => setConfirmPassword(e.target.value)}
-                  type="password"
-                  onKeyDown={e => e.key === 'Enter' && handleAuth()}
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={e => setEmail(e.target.value)}
+                  type="email"
+                  onKeyDown={e => e.key === 'Enter' && handleContinueToRole()}
                 />
               </div>
-            )}
-
-            <button className="btn btn-primary btn-full" onClick={handleAuth} disabled={loading}>
-              {loading
-                ? (isSignUp ? 'Creating Account...' : 'Signing In...')
-                : (isSignUp ? '🚀 Create Account' : '🔓 Sign In')
-              }
-            </button>
-
-            {isSignUp && (
-              <div style={{
-                marginTop: 12, padding: 12, borderRadius: 10,
-                background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)',
-                fontSize: 12, color: 'var(--secondary-light)', textAlign: 'center',
-              }}>
-                📧 A verification email will be sent to confirm your account
+              <button className="btn btn-primary btn-full" onClick={handleContinueToRole}>
+                Continue →
+              </button>
+              <div style={{ textAlign: 'center', marginTop: 16, fontSize: 14, color: 'var(--text-muted)' }}>
+                {isSignUp ? 'Already have an account?' : "Don't have an account?"}{' '}
+                <button
+                  onClick={() => setIsSignUp(!isSignUp)}
+                  style={{ background: 'none', color: 'var(--primary-light)', fontSize: 14, fontWeight: 700, textDecoration: 'underline', cursor: 'pointer' }}
+                >
+                  {isSignUp ? 'Sign In' : 'Sign Up'}
+                </button>
               </div>
-            )}
+            </div>
+          )}
 
-            <button
-              className="btn btn-outline btn-full"
-              style={{ marginTop: 10 }}
-              onClick={handleBackToRole}
-            >
-              ← Back
-            </button>
-          </div>
-        )}
-      </div>
+          {/* Step 2: Role Selection */}
+          {step === 'role' && (
+            <div style={{ animation: 'slideUp 0.4s ease-out' }}>
+              <div className="auth-step-title">Who are you?</div>
+              <div className="auth-step-sub">Select your role to continue</div>
+              <div className="roles-grid">
+                {ROLES.map((r, i) => (
+                  <button
+                    key={r.id}
+                    className={`role-btn ${role === r.id ? 'selected' : ''}`}
+                    onClick={() => setRole(r.id)}
+                    style={{ animation: `scaleIn 0.3s ease-out ${i * 0.06}s backwards` }}
+                  >
+                    <span className="role-emoji">{r.emoji}</span>
+                    <span className="role-name">{r.name}</span>
+                    <span className="role-desc">{r.desc}</span>
+                  </button>
+                ))}
+              </div>
+              <button className="btn btn-primary btn-full" onClick={handleContinueToAuth} disabled={!role}>
+                Continue →
+              </button>
+              <button className="btn btn-outline btn-full" style={{ marginTop: 10 }} onClick={handleBackToContact}>
+                ← Back
+              </button>
+            </div>
+          )}
+
+          {/* Step 3: Password Auth */}
+          {step === 'auth' && (
+            <div style={{ animation: 'slideUp 0.4s ease-out' }}>
+              <div className="auth-step-title">{isSignUp ? 'Create Your Account' : 'Sign In'}</div>
+              <div className="auth-step-sub" style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ background: 'var(--primary)', color: 'white', padding: '2px 8px', borderRadius: 12, fontSize: 12, fontWeight: 700 }}>
+                  {email}
+                </span>
+              </div>
+
+              {isSignUp && (
+                <div className="form-group" style={{ marginTop: 16 }}>
+                  <label className="form-label">Full Name</label>
+                  <input
+                    className="form-input"
+                    placeholder="Your full name"
+                    value={name}
+                    onChange={e => setName(e.target.value)}
+                    type="text"
+                  />
+                </div>
+              )}
+
+              <div className="form-group" style={{ marginTop: isSignUp ? 0 : 16 }}>
+                <label className="form-label">Password</label>
+                <input
+                  className="form-input"
+                  placeholder={isSignUp ? 'Create a password (min 6 chars)' : 'Enter your password'}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
+                  type="password"
+                  onKeyDown={e => e.key === 'Enter' && !isSignUp && handleAuth()}
+                />
+              </div>
+
+              {isSignUp && (
+                <div className="form-group">
+                  <label className="form-label">Confirm Password</label>
+                  <input
+                    className="form-input"
+                    placeholder="Re-enter your password"
+                    value={confirmPassword}
+                    onChange={e => setConfirmPassword(e.target.value)}
+                    type="password"
+                    onKeyDown={e => e.key === 'Enter' && handleAuth()}
+                  />
+                </div>
+              )}
+
+              <button className="btn btn-primary btn-full" onClick={handleAuth} disabled={loading}>
+                {loading
+                  ? (isSignUp ? 'Creating Account...' : 'Signing In...')
+                  : (isSignUp ? '🚀 Create Account' : '🔓 Sign In')
+                }
+              </button>
+
+              {isSignUp && (
+                <div style={{
+                  marginTop: 12, padding: 12, borderRadius: 10,
+                  background: 'rgba(16,185,129,0.1)', border: '1px solid rgba(16,185,129,0.2)',
+                  fontSize: 12, color: 'var(--secondary-light)', textAlign: 'center',
+                }}>
+                  📧 A verification email will be sent to confirm your account
+                </div>
+              )}
+
+              <button className="btn btn-outline btn-full" style={{ marginTop: 10 }} onClick={handleBackToRole}>
+                ← Back
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
