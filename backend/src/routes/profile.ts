@@ -5,9 +5,14 @@ import { AuthRequest, authenticate } from '../middleware/auth.js'
 
 const router = express.Router()
 
-// Update user profile (homeowner)
+// Update user profile (homeowner) — only owner can update their own profile
 router.post('/user/:id', authenticate, async (req: AuthRequest, res) => {
   try {
+    // IDOR protection: ensure the authenticated user is updating their own profile
+    if (req.userId !== req.params.id) {
+      return res.status(403).json({ detail: 'Forbidden: you can only update your own profile' })
+    }
+
     const { name, city } = req.body
 
     const user = await User.findById(req.params.id)
@@ -36,7 +41,21 @@ router.post('/user/:id', authenticate, async (req: AuthRequest, res) => {
 // Update professional profile
 router.post('/professional/:id', authenticate, async (req: AuthRequest, res) => {
   try {
+    if (req.userId !== req.params.id) {
+      return res.status(403).json({ detail: 'Forbidden: you can only update your own profile' })
+    }
+
     const { name, city, experience, specializations, price_range, consultation_fee } = req.body
+
+    // Safely parse specializations JSON
+    let parsedSpecializations: string[] | undefined
+    if (specializations) {
+      try {
+        parsedSpecializations = JSON.parse(specializations)
+      } catch {
+        return res.status(400).json({ detail: 'Invalid specializations format, expected JSON array' })
+      }
+    }
 
     const user = await User.findById(req.params.id)
     if (!user) {
@@ -48,7 +67,7 @@ router.post('/professional/:id', authenticate, async (req: AuthRequest, res) => 
       name,
       city,
       experience: experience ? parseInt(experience) : undefined,
-      specializations: specializations ? JSON.parse(specializations) : undefined,
+      specializations: parsedSpecializations,
       price_range,
       consultation_fee: consultation_fee ? parseFloat(consultation_fee) : undefined,
     }
@@ -72,6 +91,10 @@ router.post('/professional/:id', authenticate, async (req: AuthRequest, res) => 
 // Update vendor profile
 router.post('/vendor/:id', authenticate, async (req: AuthRequest, res) => {
   try {
+    if (req.userId !== req.params.id) {
+      return res.status(403).json({ detail: 'Forbidden: you can only update your own profile' })
+    }
+
     const { shop_name, owner_name, city, address, gst_number } = req.body
 
     const user = await User.findById(req.params.id)
@@ -107,6 +130,10 @@ router.post('/vendor/:id', authenticate, async (req: AuthRequest, res) => {
 // Upload profile avatar
 router.post('/upload-avatar/:id', authenticate, uploadSingle, async (req: AuthRequest, res) => {
   try {
+    if (req.userId !== req.params.id) {
+      return res.status(403).json({ detail: 'Forbidden' })
+    }
+
     if (!req.file) {
       return res.status(400).json({ detail: 'No file uploaded' })
     }
@@ -116,15 +143,11 @@ router.post('/upload-avatar/:id', authenticate, uploadSingle, async (req: AuthRe
       return res.status(404).json({ detail: 'User not found' })
     }
 
-    // Save the file URL
     const avatarUrl = `/uploads/profiles/${req.file.filename}`
     user.profile = { ...user.profile, avatar: avatarUrl }
     await user.save()
 
-    res.json({
-      avatar: avatarUrl,
-      message: 'Avatar uploaded successfully',
-    })
+    res.json({ avatar: avatarUrl, message: 'Avatar uploaded successfully' })
   } catch (error) {
     console.error('Upload avatar error:', error)
     res.status(500).json({ detail: 'Failed to upload avatar' })
@@ -134,6 +157,10 @@ router.post('/upload-avatar/:id', authenticate, uploadSingle, async (req: AuthRe
 // Upload portfolio images
 router.post('/upload-portfolio/:id', authenticate, uploadMultiple, async (req: AuthRequest, res) => {
   try {
+    if (req.userId !== req.params.id) {
+      return res.status(403).json({ detail: 'Forbidden' })
+    }
+
     if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
       return res.status(400).json({ detail: 'No files uploaded' })
     }
@@ -143,7 +170,6 @@ router.post('/upload-portfolio/:id', authenticate, uploadMultiple, async (req: A
       return res.status(404).json({ detail: 'User not found' })
     }
 
-    // Save portfolio image URLs
     const portfolioUrls = req.files.map(file => `/uploads/portfolios/${file.filename}`)
     user.profile = {
       ...user.profile,
@@ -151,10 +177,7 @@ router.post('/upload-portfolio/:id', authenticate, uploadMultiple, async (req: A
     }
     await user.save()
 
-    res.json({
-      portfolio_images: portfolioUrls,
-      message: 'Portfolio images uploaded successfully',
-    })
+    res.json({ portfolio_images: portfolioUrls, message: 'Portfolio images uploaded successfully' })
   } catch (error) {
     console.error('Upload portfolio error:', error)
     res.status(500).json({ detail: 'Failed to upload portfolio images' })

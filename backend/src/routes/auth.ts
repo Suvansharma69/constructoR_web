@@ -3,23 +3,17 @@ import User from '../models/User.js'
 import { generateOTP, storeOTP, verifyOTP as verifyOTPUtil } from '../utils/otp.js'
 import { generateToken } from '../utils/jwt.js'
 import admin from 'firebase-admin'
-import { readFileSync, existsSync } from 'fs'
-import path from 'path'
-import { fileURLToPath } from 'url'
 
-const __filename = fileURLToPath(import.meta.url)
-const __dirname = path.dirname(__filename)
-
-// Initialize Firebase Admin SDK
-const serviceAccountPath = path.resolve(__dirname, '../../firebase-service-account.json')
+// Initialize Firebase Admin SDK via environment variable (no file needed)
 if (!admin.apps.length) {
   try {
-    if (existsSync(serviceAccountPath)) {
-      const serviceAccount = JSON.parse(readFileSync(serviceAccountPath, 'utf8'))
+    const credJson = process.env.FIREBASE_SERVICE_ACCOUNT_JSON
+    if (credJson) {
+      const serviceAccount = JSON.parse(credJson)
       admin.initializeApp({ credential: admin.credential.cert(serviceAccount) })
-      console.log('🔥 Firebase Admin SDK initialized')
+      console.log('🔥 Firebase Admin SDK initialized from env')
     } else {
-      console.warn('⚠️ firebase-service-account.json not found, Firebase auth disabled')
+      console.warn('⚠️ FIREBASE_SERVICE_ACCOUNT_JSON not set, Firebase auth disabled')
     }
   } catch (err) {
     console.error('Firebase Admin init error:', err)
@@ -37,6 +31,10 @@ router.post('/firebase-login', async (req, res) => {
       return res.status(400).json({ detail: 'idToken and role are required' })
     }
 
+    if (!admin.apps.length) {
+      return res.status(503).json({ detail: 'Firebase auth not configured on server' })
+    }
+
     // Verify Firebase token
     const decoded = await admin.auth().verifyIdToken(idToken)
     const firebase_uid = decoded.uid
@@ -50,7 +48,6 @@ router.post('/firebase-login', async (req, res) => {
     }
 
     if (!user) {
-      // Create new user
       user = new User({
         firebase_uid,
         contact: email,
@@ -62,11 +59,9 @@ router.post('/firebase-login', async (req, res) => {
       })
       await user.save()
     } else {
-      // Update firebase_uid + email_verified
       user.firebase_uid = firebase_uid
       user.email_verified = email_verified
 
-      // If role changed, reset profile
       if (user.role !== role) {
         user.role = role as any
         user.profile_completed = false
@@ -114,12 +109,13 @@ router.post('/send-otp', async (req, res) => {
     const otp = generateOTP()
     storeOTP(contact, otp)
 
-    // In production, send actual OTP via SMS/Email
-    console.log(`📱 OTP for ${contact}: ${otp}`)
+    // Only log OTP in development — never expose in production logs
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`📱 DEV OTP for ${contact}: ${otp}`)
+    }
 
     res.json({
       message: 'OTP sent successfully',
-      // Only expose OTP in development — never in production
       ...(process.env.NODE_ENV !== 'production' && { mock_otp: otp }),
     })
   } catch (error) {
@@ -137,17 +133,14 @@ router.post('/verify-otp', async (req, res) => {
       return res.status(400).json({ detail: 'Contact, OTP, and role are required' })
     }
 
-    // Verify OTP
     const isValid = verifyOTPUtil(contact, otp)
     if (!isValid) {
       return res.status(400).json({ detail: 'Invalid or expired OTP' })
     }
 
-    // Find or create user
     let user = await User.findOne({ contact })
 
     if (!user) {
-      // Create new user
       const contactType = contact.includes('@') ? 'email' : 'phone'
       user = new User({
         contact,
@@ -158,7 +151,6 @@ router.post('/verify-otp', async (req, res) => {
       await user.save()
     }
 
-    // Generate JWT token
     const token = generateToken(user._id.toString())
 
     res.json({
@@ -178,9 +170,16 @@ router.post('/verify-otp', async (req, res) => {
   }
 })
 
-// Get user by ID
-router.get('/user/:id', async (req, res) => {
+// Get user by ID — requires authentication
+import { authenticate, AuthRequest } from '../middleware/auth.js'
+
+router.get('/user/:id', authenticate, async (req: AuthRequest, res) => {
   try {
+    // Only allow users to fetch their own data
+    if (req.userId !== req.params.id) {
+      return res.status(403).json({ detail: 'Forbidden' })
+    }
+
     const user = await User.findById(req.params.id)
     if (!user) {
       return res.status(404).json({ detail: 'User not found' })

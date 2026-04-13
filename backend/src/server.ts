@@ -6,6 +6,7 @@ import dotenv from 'dotenv'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { connectDB } from './config/db.js'
+import { verifyToken } from './utils/jwt.js'
 
 // Routes
 import authRoutes from './routes/auth.js'
@@ -78,37 +79,34 @@ app.use('/api/materials', materialsRoutes)
 app.use('/api/orders', ordersRoutes)
 app.use('/api/messages', messagesRoutes)
 
-// Socket.io connection handling
+// Socket.io connection handling — JWT verified on connect
 const connectedUsers = new Map<string, string>() // userId -> socketId
 
+io.use((socket, next) => {
+  const token = socket.handshake.auth?.token as string | undefined
+  if (!token) return next(new Error('Authentication required'))
+  const decoded = verifyToken(token)
+  if (!decoded) return next(new Error('Invalid token'))
+  ;(socket as any).userId = decoded.userId
+  next()
+})
+
 io.on('connection', (socket) => {
-  console.log('👤 User connected:', socket.id)
+  const userId = (socket as any).userId as string
+  connectedUsers.set(userId, socket.id)
+  console.log(`✅ User ${userId} connected with socket ${socket.id}`)
 
-  // User joins with their ID
-  socket.on('join', (userId: string) => {
-    connectedUsers.set(userId, socket.id)
-    console.log(`✅ User ${userId} joined with socket ${socket.id}`)
-  })
-
-  // Handle new message
-  socket.on('new_message', (data: { sender_id: string; receiver_id: string; message: any }) => {
+  // Handle new message — sender must match authenticated userId
+  socket.on('new_message', (data: { receiver_id: string; message: any }) => {
     const receiverSocketId = connectedUsers.get(data.receiver_id)
     if (receiverSocketId) {
       io.to(receiverSocketId).emit('receive_message', data.message)
-      console.log(`📨 Message sent to user ${data.receiver_id}`)
     }
   })
 
-  // Handle disconnect
   socket.on('disconnect', () => {
-    // Remove user from connected users
-    for (const [userId, socketId] of connectedUsers.entries()) {
-      if (socketId === socket.id) {
-        connectedUsers.delete(userId)
-        console.log(`👋 User ${userId} disconnected`)
-        break
-      }
-    }
+    connectedUsers.delete(userId)
+    console.log(`👋 User ${userId} disconnected`)
   })
 })
 

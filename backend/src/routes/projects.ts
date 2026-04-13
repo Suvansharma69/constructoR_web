@@ -49,9 +49,12 @@ router.post('/', authenticate, uploadDocuments, async (req: AuthRequest, res) =>
   }
 })
 
-// Get user's projects
+// Get user's projects — only owner can view their own
 router.get('/user/:id', authenticate, async (req: AuthRequest, res) => {
   try {
+    if (req.userId !== req.params.id) {
+      return res.status(403).json({ detail: 'Forbidden' })
+    }
     const projects = await Project.find({ user_id: req.params.id }).sort({ created_at: -1 })
     res.json(projects)
   } catch (error) {
@@ -64,10 +67,11 @@ router.get('/user/:id', authenticate, async (req: AuthRequest, res) => {
 router.get('/available/:role', authenticate, async (req: AuthRequest, res) => {
   try {
     const { role } = req.params
-    const { location } = req.query
+    // Cast location to string and escape for safe regex use
+    const locationRaw = req.query.location
+    const location = typeof locationRaw === 'string' ? locationRaw.trim() : undefined
 
-    // Map roles to project types
-    const projectTypeMap: any = {
+    const projectTypeMap: Record<string, string[]> = {
       architect: ['new_construction', 'renovation', 'commercial'],
       contractor: ['new_construction', 'renovation', 'commercial'],
       interior_designer: ['interior_design', 'renovation'],
@@ -79,7 +83,9 @@ router.get('/available/:role', authenticate, async (req: AuthRequest, res) => {
     }
 
     if (location) {
-      query.location = { $regex: location, $options: 'i' }
+      // Escape special regex characters to prevent ReDoS
+      const escaped = location.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      query.location = { $regex: escaped, $options: 'i' }
     }
 
     const projects = await Project.find(query)
