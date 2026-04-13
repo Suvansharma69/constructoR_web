@@ -18,6 +18,46 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+// Auto-logout on 401 (expired/invalid token) — prevents silent failures
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401) {
+      // Clear auth state and redirect to login
+      localStorage.removeItem('be_user')
+      localStorage.removeItem('be_token')
+      if (window.location.pathname !== '/login') {
+        window.location.href = '/login'
+      }
+    }
+    return Promise.reject(err)
+  }
+)
+
+// Simple in-memory cache for GET requests to reduce Render cold-start lag
+const cache = new Map<string, { data: any; ts: number }>()
+const CACHE_TTL = 30_000 // 30 seconds
+
+export const cachedGet = async (url: string, params?: Record<string, string>) => {
+  const key = url + JSON.stringify(params || {})
+  const cached = cache.get(key)
+  if (cached && Date.now() - cached.ts < CACHE_TTL) return cached.data
+  const res = await api.get(url, { params })
+  cache.set(key, { data: res, ts: Date.now() })
+  return res
+}
+
+export const clearCache = (url?: string) => {
+  if (url) {
+    for (const key of cache.keys()) {
+      if (key.startsWith(url)) cache.delete(key)
+    }
+  } else {
+    cache.clear()
+  }
+}
+
+
 // Helper: only use mock fallback if it's a network/offline error (no response from server)
 // For real 4xx/5xx errors, always throw so the UI shows the real error message
 const isMockable = (err: any): boolean => {

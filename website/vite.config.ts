@@ -12,4 +12,23 @@ export default defineConfig({
       '@': '/src',
     },
   },
+  build: {
+    // Split vendor chunks to reduce initial load time
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // React core — rarely changes, cached by browser
+          'vendor-react': ['react', 'react-dom', 'react-router-dom'],
+          // Firebase — large library, separate chunk
+          'vendor-firebase': ['firebase/app', 'firebase/auth'],
+          // Socket.io client
+          'vendor-socket': ['socket.io-client'],
+          // Axios
+          'vendor-axios': ['axios'],
+        },
+      },
+    },
+    // Raise warning threshold since we're now properly splitting
+    chunkSizeWarningLimit: 300,
+  },
 })

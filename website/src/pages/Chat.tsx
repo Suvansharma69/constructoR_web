@@ -12,7 +12,7 @@ const ROLE_EMOJI: Record<string,string> = { homeowner:'🏠', architect:'📐', 
 
 export default function Chat() {
   const { userId: paramUserId } = useParams<{ userId?: string }>()
-  const { user } = useAuth()
+  const { user, token } = useAuth()
   const { toast } = useToast()
 
   const [convs, setConvs] = useState<Conversation[]>([])
@@ -23,34 +23,39 @@ export default function Chat() {
   const [sending, setSending] = useState(false)
   const socketRef = useRef<Socket | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
-  // Keep a ref of activeId so socket handler always sees latest value without reconnecting
   const activeIdRef = useRef<string | null>(activeId)
 
   useEffect(() => {
     activeIdRef.current = activeId
   }, [activeId])
 
-  // Connect socket ONCE per user session — NOT per activeId change
+  // Connect socket ONCE — send JWT in handshake auth so backend can verify identity
   useEffect(() => {
-    if (!user) return
-    const socket = io(BACKEND_URL, { transports: ['websocket', 'polling'] })
-    socketRef.current = socket
-    socket.on('connect', () => {
-      socket.emit('join_room', { user_id: user._id })
+    if (!user || !token) return
+
+    const socket = io(BACKEND_URL, {
+      transports: ['websocket', 'polling'],
+      auth: { token }, // ← JWT sent to backend for authentication
     })
-    socket.on('new_message', (msg: Message) => {
-      // Use ref to get current activeId without re-subscribing
+    socketRef.current = socket
+
+    socket.on('connect_error', (err) => {
+      console.warn('Socket connection error:', err.message)
+    })
+
+    // Backend emits 'receive_message' (not 'new_message')
+    socket.on('receive_message', (msg: Message) => {
       const currentActiveId = activeIdRef.current
       if (msg.sender_id === currentActiveId || msg.receiver_id === currentActiveId) {
         setMsgs(prev => [...prev, msg])
       }
       loadConvs()
     })
+
     return () => {
-      socket.emit('leave_room', { user_id: user._id })
       socket.disconnect()
     }
-  }, [user]) // Only reconnect if user changes
+  }, [user, token]) // Reconnect only if user/token changes
 
   const loadConvs = useCallback(() => {
     if (!user) return
@@ -72,6 +77,7 @@ export default function Chat() {
       .catch(() => toast('Failed to load messages', 'error'))
   }, [activeId, user])
 
+  // Auto-scroll to latest message
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [msgs])

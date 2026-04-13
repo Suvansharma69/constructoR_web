@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/auth'
 import { useToast } from '../../components/Toast'
@@ -28,11 +28,11 @@ export default function Materials() {
     getMaterials().then(r => setMaterials(r.data)).catch(() => toast('Failed to load materials','error')).finally(() => setLoading(false))
   }, [])
 
-  const filtered = materials.filter(m => {
+  const filtered = useMemo(() => materials.filter(m => {
     const matchCat = category === 'All' || m.category === category
     const matchSearch = !search || m.name.toLowerCase().includes(search.toLowerCase()) || m.brand?.toLowerCase().includes(search.toLowerCase())
     return matchCat && matchSearch
-  })
+  }), [materials, category, search])
 
   const addToCart = (mat: Material) => {
     setCart(p => {
