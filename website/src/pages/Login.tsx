@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import { useToast } from '../components/Toast'
@@ -21,14 +21,15 @@ const ROLES = [
 type Step = 'contact' | 'role' | 'auth'
 
 function Particles() {
-  const particles = Array.from({ length: 20 }, (_, i) => ({
+  // useMemo: compute random values ONCE, not on every render
+  const particles = useMemo(() => Array.from({ length: 20 }, (_, i) => ({
     id: i,
     left: Math.random() * 100,
     size: Math.random() * 4 + 2,
     delay: Math.random() * 15,
     duration: Math.random() * 10 + 15,
     opacity: Math.random() * 0.3 + 0.1,
-  }))
+  })), [])
   return (
     <div style={{ position: 'absolute', inset: 0, overflow: 'hidden', pointerEvents: 'none', zIndex: 0 }}>
       {particles.map(p => (

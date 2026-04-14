@@ -13,14 +13,19 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
     if (!items || !Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ detail: 'Items are required' })
     }
-
-    if (!delivery_address) {
-      return res.status(400).json({ detail: 'Delivery address is required' })
+    if (items.length > 50) {
+      return res.status(400).json({ detail: 'Too many items in one order (max 50)' })
+    }
+    if (!delivery_address || typeof delivery_address !== 'string' || delivery_address.trim().length < 10) {
+      return res.status(400).json({ detail: 'Valid delivery address is required (min 10 chars)' })
     }
 
-    // Calculate total and validate materials
+    // Calculate total server-side — never trust client-sent prices
     let total = 0
     for (const item of items) {
+      if (!item.material_id || !item.quantity || item.quantity < 1) {
+        return res.status(400).json({ detail: 'Each item needs a valid material_id and quantity >= 1' })
+      }
       const material = await Material.findById(item.material_id)
       if (!material) {
         return res.status(404).json({ detail: `Material ${item.material_id} not found` })
@@ -28,6 +33,7 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       if (material.stock < item.quantity) {
         return res.status(400).json({ detail: `Insufficient stock for ${material.name}` })
       }
+      // Use server-side price — ignore any price sent by client
       total += material.price * item.quantity
 
       // Update stock
@@ -39,8 +45,8 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
     const order = new Order({
       user_id: req.userId,
       items,
-      delivery_address,
-      total_amount: total,
+      delivery_address: delivery_address.trim(),
+      total_amount: total, // always server-calculated
     })
 
     await order.save()
@@ -56,9 +62,14 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
   }
 })
 
-// Get user's orders
+// Get user's orders — only the owner can view their orders
 router.get('/user/:id', authenticate, async (req: AuthRequest, res) => {
   try {
+    // IDOR protection
+    if (req.userId !== req.params.id) {
+      return res.status(403).json({ detail: 'Forbidden' })
+    }
+
     const orders = await Order.find({ user_id: req.params.id })
       .populate('items.material_id')
       .sort({ created_at: -1 })
@@ -69,10 +80,14 @@ router.get('/user/:id', authenticate, async (req: AuthRequest, res) => {
   }
 })
 
-// Get vendor's orders
+// Get vendor's orders — only the vendor themselves
 router.get('/vendor/:id', authenticate, async (req: AuthRequest, res) => {
   try {
-    // Find all orders containing materials from this vendor
+    // IDOR protection
+    if (req.userId !== req.params.id) {
+      return res.status(403).json({ detail: 'Forbidden' })
+    }
+
     const materials = await Material.find({ vendor_id: req.params.id }).select('_id')
     const materialIds = materials.map(m => m._id)
 
@@ -90,19 +105,35 @@ router.get('/vendor/:id', authenticate, async (req: AuthRequest, res) => {
   }
 })
 
-// Update order status
+// Update order status — only the vendor of that order's materials can update
 router.put('/:id/status', authenticate, async (req: AuthRequest, res) => {
   try {
     const { status } = req.body
 
     const validStatuses = ['pending', 'processing', 'delivered', 'cancelled']
     if (!status || !validStatuses.includes(status)) {
-      return res.status(400).json({ detail: 'Invalid status' })
+      return res.status(400).json({ detail: `Invalid status. Must be one of: ${validStatuses.join(', ')}` })
     }
 
-    const order = await Order.findById(req.params.id)
+    const order = await Order.findById(req.params.id).populate('items.material_id')
     if (!order) {
       return res.status(404).json({ detail: 'Order not found' })
+    }
+
+    // Only the buyer can cancel their own order, only a vendor whose material is in the order can update status
+    const isBuyer = order.user_id.toString() === req.userId
+    const isRelatedVendor = await Material.exists({
+      _id: { $in: order.items.map((i: any) => i.material_id) },
+      vendor_id: req.userId,
+    })
+
+    if (!isBuyer && !isRelatedVendor) {
+      return res.status(403).json({ detail: 'Forbidden: not authorized to update this order' })
+    }
+
+    // Buyers can only cancel, vendors can update to processing/delivered
+    if (isBuyer && status !== 'cancelled') {
+      return res.status(403).json({ detail: 'Buyers can only cancel orders' })
     }
 
     order.status = status

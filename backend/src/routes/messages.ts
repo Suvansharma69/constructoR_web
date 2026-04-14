@@ -14,10 +14,23 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       return res.status(400).json({ detail: 'Receiver ID and message are required' })
     }
 
+    // Validate message length — prevent abuse
+    if (typeof message !== 'string' || message.trim().length === 0) {
+      return res.status(400).json({ detail: 'Message cannot be empty' })
+    }
+    if (message.length > 2000) {
+      return res.status(400).json({ detail: 'Message too long (max 2000 characters)' })
+    }
+
+    // Prevent messaging yourself
+    if (receiver_id === req.userId) {
+      return res.status(400).json({ detail: 'Cannot send a message to yourself' })
+    }
+
     const newMessage = new Message({
       sender_id: req.userId,
       receiver_id,
-      message,
+      message: message.trim(),
     })
 
     await newMessage.save()
@@ -33,10 +46,15 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
   }
 })
 
-// Get conversation between two users
+// Get conversation between two users — only participants can read it
 router.get('/conversation/:user1/:user2', authenticate, async (req: AuthRequest, res) => {
   try {
     const { user1, user2 } = req.params
+
+    // IDOR protection: must be one of the participants
+    if (req.userId !== user1 && req.userId !== user2) {
+      return res.status(403).json({ detail: 'Forbidden: you are not part of this conversation' })
+    }
 
     const messages = await Message.find({
       $or: [
@@ -47,6 +65,7 @@ router.get('/conversation/:user1/:user2', authenticate, async (req: AuthRequest,
       .populate('sender_id', 'profile')
       .populate('receiver_id', 'profile')
       .sort({ created_at: 1 })
+      .limit(200) // limit to last 200 messages for performance
 
     // Mark messages as read
     await Message.updateMany(
@@ -61,46 +80,49 @@ router.get('/conversation/:user1/:user2', authenticate, async (req: AuthRequest,
   }
 })
 
-// Get all conversations for a user
+// Get all conversations for a user — only the user themselves can view
 router.get('/conversations/:user_id', authenticate, async (req: AuthRequest, res) => {
   try {
     const userId = req.params.user_id
 
-    // Find all unique users this user has messaged with
+    // IDOR protection
+    if (req.userId !== userId) {
+      return res.status(403).json({ detail: 'Forbidden' })
+    }
+
+    // Fix N+1 query: use aggregation pipeline instead of per-user queries
     const sentMessages = await Message.find({ sender_id: userId }).distinct('receiver_id')
     const receivedMessages = await Message.find({ receiver_id: userId }).distinct('sender_id')
 
-    const allUserIds = [...new Set([...sentMessages, ...receivedMessages])]
+    const allUserIds = [...new Set([...sentMessages.map(String), ...receivedMessages.map(String)])]
 
-    // Get user details and last message
-    const conversations = await Promise.all(
-      allUserIds.map(async (otherUserId) => {
-        const user = await User.findById(otherUserId).select('profile role')
-        const lastMessage = await Message.findOne({
+    // Batch fetch all partner users and last messages in parallel
+    const [users, lastMessages, unreadCounts] = await Promise.all([
+      User.find({ _id: { $in: allUserIds } }).select('profile role').lean(),
+      Promise.all(allUserIds.map(otherId =>
+        Message.findOne({
           $or: [
-            { sender_id: userId, receiver_id: otherUserId },
-            { sender_id: otherUserId, receiver_id: userId },
+            { sender_id: userId, receiver_id: otherId },
+            { sender_id: otherId, receiver_id: userId },
           ],
-        }).sort({ created_at: -1 })
+        }).sort({ created_at: -1 }).lean()
+      )),
+      Promise.all(allUserIds.map(otherId =>
+        Message.countDocuments({ sender_id: otherId, receiver_id: userId, read: false })
+      )),
+    ])
 
-        const unreadCount = await Message.countDocuments({
-          sender_id: otherUserId,
-          receiver_id: userId,
-          read: false,
-        })
+    const userMap = new Map(users.map(u => [u._id.toString(), u]))
 
-        return {
-          user,
-          last_message: lastMessage,
-          unread_count: unreadCount,
-        }
-      })
-    )
+    const conversations = allUserIds.map((otherId, i) => ({
+      user: userMap.get(otherId) || null,
+      last_message: lastMessages[i],
+      unread_count: unreadCounts[i],
+    }))
 
-    // Sort by last message time
     conversations.sort((a, b) => {
-      const aTime = a.last_message?.created_at?.getTime() || 0
-      const bTime = b.last_message?.created_at?.getTime() || 0
+      const aTime = (a.last_message as any)?.created_at?.getTime?.() || 0
+      const bTime = (b.last_message as any)?.created_at?.getTime?.() || 0
       return bTime - aTime
     })
 
@@ -111,9 +133,14 @@ router.get('/conversations/:user_id', authenticate, async (req: AuthRequest, res
   }
 })
 
-// Get unread message count
+// Get unread message count — only the user themselves
 router.get('/unread/:user_id', authenticate, async (req: AuthRequest, res) => {
   try {
+    // IDOR protection
+    if (req.userId !== req.params.user_id) {
+      return res.status(403).json({ detail: 'Forbidden' })
+    }
+
     const count = await Message.countDocuments({
       receiver_id: req.params.user_id,
       read: false,
