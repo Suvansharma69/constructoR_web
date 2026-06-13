@@ -51,7 +51,7 @@ export default function Contractors() {
                   <div className="pro-loc">📍 {pro.profile.city}</div>
                   <div className="pro-exp">⭐ {pro.profile.experience} yrs exp</div>
                 </div>
-                <span className="badge badge-orange">PRO</span>
+                <span className="badge badge-blue">PRO</span>
               </div>
               {pro.profile.specializations?.length > 0 && (
                 <div className="tags">
@@ -64,7 +64,7 @@ export default function Contractors() {
                   <small style={{color:'var(--text-faint)',fontSize:11}}>Rate per sq ft</small>
                 </div>
                 <div className="pro-actions">
-                  <button className="btn btn-sm btn-green" onClick={() => navigate(`/chat/${pro._id}`)}>💬 Chat</button>
+                  <button className="btn btn-sm btn-success" onClick={() => navigate(`/chat/${pro._id}`)}>Message</button>
                   <button className="btn btn-sm btn-outline" onClick={() => window.open(`tel:${pro.contact}`)}>📞</button>
                 </div>
               </div>

@@ -74,7 +74,7 @@ function ProfList({ role, title, emoji, color }: { role: string; title: string; 
                   <small style={{color:'var(--text-faint)',fontSize:11}}>per sq ft / consultation</small>
                 </div>
                 <div className="pro-actions">
-                  <button className="btn btn-sm btn-green" onClick={() => navigate(`/chat/${pro._id}`)}>💬 Chat</button>
+                  <button className="btn btn-sm btn-success" onClick={() => navigate(`/chat/${pro._id}`)}>Message</button>
                   <button className="btn btn-sm btn-outline" onClick={() => window.open(`tel:${pro.contact}`)}>📞</button>
                 </div>
               </div>

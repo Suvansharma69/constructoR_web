@@ -28,6 +28,24 @@ interface AuthCtx {
   isLoggedIn: boolean
 }
 
+/** Parse the exp claim from a JWT without a library. Returns seconds since epoch. */
+function getJwtExpiry(token: string): number | null {
+  try {
+    const payload = token.split('.')[1]
+    if (!payload) return null
+    const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')))
+    return typeof decoded.exp === 'number' ? decoded.exp : null
+  } catch {
+    return null
+  }
+}
+
+function isTokenExpired(token: string): boolean {
+  const exp = getJwtExpiry(token)
+  if (!exp) return true // treat unparseable tokens as expired
+  return Date.now() / 1000 > exp
+}
+
 const AuthContext = createContext<AuthCtx>({} as AuthCtx)
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -38,13 +56,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const storedUser = localStorage.getItem('be_user')
     const storedToken = localStorage.getItem('be_token')
     if (storedUser && storedToken) {
+      // ── Security: check JWT expiry before restoring session ─────────────────
+      if (isTokenExpired(storedToken)) {
+        localStorage.removeItem('be_user')
+        localStorage.removeItem('be_token')
+        return
+      }
       setUser(JSON.parse(storedUser))
       setToken(storedToken)
     }
   }, [])
 
   const login = (u: User, t: string) => {
-    setUser(u); setToken(t)
+    setUser(u)
+    setToken(t)
     localStorage.setItem('be_user', JSON.stringify(u))
     localStorage.setItem('be_token', t)
   }
@@ -55,7 +80,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const logout = () => {
-    setUser(null); setToken(null)
+    setUser(null)
+    setToken(null)
     localStorage.removeItem('be_user')
     localStorage.removeItem('be_token')
   }
