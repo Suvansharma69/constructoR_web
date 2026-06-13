@@ -6,17 +6,21 @@ import fs from 'fs'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-// Ensure upload directories exist
 const uploadDir = path.join(__dirname, '../../uploads')
 const dirs = ['profiles', 'materials', 'projects', 'portfolios']
 dirs.forEach(dir => {
   const fullPath = path.join(uploadDir, dir)
-  if (!fs.existsSync(fullPath)) {
-    fs.mkdirSync(fullPath, { recursive: true })
-  }
+  if (!fs.existsSync(fullPath)) fs.mkdirSync(fullPath, { recursive: true })
 })
 
-// Storage configuration
+// Allowed file extensions — defense-in-depth against MIME spoofing
+const ALLOWED_IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp'])
+const ALLOWED_DOC_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.pdf'])
+
+// Allowed MIME types
+const ALLOWED_IMAGE_MIMES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp'])
+const ALLOWED_DOC_MIMES = new Set(['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf'])
+
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
     let folder = 'profiles'
@@ -26,48 +30,66 @@ const storage = multer.diskStorage({
     cb(null, path.join(uploadDir, folder))
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9)
-    cb(null, uniqueSuffix + path.extname(file.originalname))
+    // Only allow safe file extensions — strip all special characters
+    const ext = path.extname(file.originalname).toLowerCase()
+    const uniqueSuffix = `${Date.now()}-${Math.round(Math.random() * 1e9)}`
+    // Never use original filename — generate a safe random one
+    cb(null, `${uniqueSuffix}${ext}`)
   },
 })
 
-// File filter for images
+// Double-check: validate BOTH mimetype AND file extension
+// Prevents MIME spoofing (attacker sends PHP with image mimetype)
 const imageFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp']
-  if (allowedTypes.includes(file.mimetype)) {
+  const ext = path.extname(file.originalname).toLowerCase()
+  const mimeOk = ALLOWED_IMAGE_MIMES.has(file.mimetype)
+  const extOk = ALLOWED_IMAGE_EXTS.has(ext)
+
+  if (mimeOk && extOk) {
     cb(null, true)
   } else {
-    cb(new Error('Invalid file type. Only JPEG, PNG, and WebP are allowed.'))
+    cb(new Error(`Invalid file. Only JPEG, PNG, and WebP images are allowed. Got: ${file.mimetype} / ${ext}`))
   }
 }
 
-// File filter for documents (images + PDFs)
 const documentFilter = (req: any, file: Express.Multer.File, cb: multer.FileFilterCallback) => {
-  const allowedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp', 'application/pdf']
-  if (allowedTypes.includes(file.mimetype)) {
+  const ext = path.extname(file.originalname).toLowerCase()
+  const mimeOk = ALLOWED_DOC_MIMES.has(file.mimetype)
+  const extOk = ALLOWED_DOC_EXTS.has(ext)
+
+  if (mimeOk && extOk) {
     cb(null, true)
   } else {
-    cb(new Error('Invalid file type. Only images and PDFs are allowed.'))
+    cb(new Error(`Invalid file type. Only images and PDFs allowed. Got: ${file.mimetype} / ${ext}`))
   }
 }
 
-// Single image upload
+// Single image — 5MB limit
 export const uploadSingle = multer({
   storage,
   fileFilter: imageFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB
+  limits: {
+    fileSize: 5 * 1024 * 1024, // 5MB
+    files: 1,                   // max 1 file
+  },
 }).single('avatar')
 
-// Multiple images upload
+// Multiple images — 5MB per file, max 6 files
 export const uploadMultiple = multer({
   storage,
   fileFilter: imageFilter,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB per file
-}).array('images', 10)
+  limits: {
+    fileSize: 5 * 1024 * 1024,
+    files: 6, // reduced from 10 to limit abuse
+  },
+}).array('images', 6)
 
-// Document upload (images + PDFs)
+// Documents — 10MB per file, max 5 files
 export const uploadDocuments = multer({
   storage,
   fileFilter: documentFilter,
-  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB per file
-}).array('documents', 10)
+  limits: {
+    fileSize: 10 * 1024 * 1024,
+    files: 5,
+  },
+}).array('documents', 5)

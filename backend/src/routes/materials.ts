@@ -12,11 +12,13 @@ router.get('/', async (req, res) => {
 
     const query: any = { in_stock: true }
 
-    if (category) {
+    if (category && typeof category === 'string') {
       query.category = category
     }
-    if (brand) {
-      query.brand = { $regex: brand, $options: 'i' }
+    if (brand && typeof brand === 'string') {
+      // Escape special regex chars to prevent ReDoS
+      const escaped = brand.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      query.brand = { $regex: escaped, $options: 'i' }
     }
 
     const materials = await Material.find(query)

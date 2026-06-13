@@ -19,8 +19,9 @@ router.get('/:role', async (req, res) => {
       profile_completed: true,
     }
 
-    if (city) {
-      query['profile.city'] = { $regex: city, $options: 'i' }
+    if (city && typeof city === 'string') {
+      const escaped = city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      query['profile.city'] = { $regex: escaped, $options: 'i' }
     }
 
     const professionals = await User.find(query).select('-contact')

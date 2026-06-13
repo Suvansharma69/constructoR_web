@@ -102,14 +102,20 @@ router.post('/send-otp', async (req, res) => {
   try {
     const { contact, contact_type } = req.body
 
-    if (!contact || !contact_type) {
-      return res.status(400).json({ detail: 'Contact and contact_type are required' })
+    // Strict type checks — prevent NoSQL injection via object payloads
+    if (!contact || typeof contact !== 'string' || contact.trim().length < 5) {
+      return res.status(400).json({ detail: 'Valid contact is required (min 5 chars)' })
+    }
+    if (!contact_type || !['phone', 'email'].includes(contact_type)) {
+      return res.status(400).json({ detail: 'contact_type must be phone or email' })
+    }
+    if (contact.length > 200) {
+      return res.status(400).json({ detail: 'Contact too long' })
     }
 
     const otp = generateOTP()
-    storeOTP(contact, otp)
+    storeOTP(contact.trim(), otp)
 
-    // Only log OTP in development — never expose in production logs
     if (process.env.NODE_ENV !== 'production') {
       console.log(`📱 DEV OTP for ${contact}: ${otp}`)
     }
@@ -129,21 +135,29 @@ router.post('/verify-otp', async (req, res) => {
   try {
     const { contact, otp, role } = req.body
 
-    if (!contact || !otp || !role) {
-      return res.status(400).json({ detail: 'Contact, OTP, and role are required' })
+    // Strict string validation — prevents object injection like {contact: {$gt: ''}}
+    if (!contact || typeof contact !== 'string' || contact.trim().length < 5) {
+      return res.status(400).json({ detail: 'Valid contact required' })
+    }
+    if (!otp || typeof otp !== 'string' || !/^\d{6}$/.test(otp)) {
+      return res.status(400).json({ detail: 'OTP must be a 6-digit number' })
+    }
+    const validRoles = ['homeowner', 'architect', 'contractor', 'interior_designer', 'vendor']
+    if (!role || !validRoles.includes(role)) {
+      return res.status(400).json({ detail: 'Invalid role' })
     }
 
-    const isValid = verifyOTPUtil(contact, otp)
+    const isValid = verifyOTPUtil(contact.trim(), otp)
     if (!isValid) {
       return res.status(400).json({ detail: 'Invalid or expired OTP' })
     }
 
-    let user = await User.findOne({ contact })
+    let user = await User.findOne({ contact: contact.trim() })
 
     if (!user) {
       const contactType = contact.includes('@') ? 'email' : 'phone'
       user = new User({
-        contact,
+        contact: contact.trim(),
         contact_type: contactType,
         role,
         profile_completed: false,

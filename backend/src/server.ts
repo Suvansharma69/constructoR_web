@@ -2,6 +2,9 @@ import express from 'express'
 import { createServer } from 'http'
 import { Server as SocketIOServer } from 'socket.io'
 import cors from 'cors'
+import helmet from 'helmet'
+import mongoSanitize from 'mongo-sanitize'
+import rateLimit from 'express-rate-limit'
 import dotenv from 'dotenv'
 import path from 'path'
 import { fileURLToPath } from 'url'
@@ -17,7 +20,6 @@ import materialsRoutes from './routes/materials.js'
 import ordersRoutes from './routes/orders.js'
 import messagesRoutes from './routes/messages.js'
 
-// Load environment variables
 dotenv.config()
 
 const __filename = fileURLToPath(import.meta.url)
@@ -26,7 +28,7 @@ const __dirname = path.dirname(__filename)
 const app = express()
 const httpServer = createServer(app)
 
-// Build list of allowed origins from env
+// ─── Allowed Origins ─────────────────────────────────────────────────────────
 const allowedOrigins: string[] = [
   'http://localhost:3000',
   'http://localhost:5173',
@@ -35,9 +37,9 @@ if (process.env.FRONTEND_URL) {
   process.env.FRONTEND_URL.split(',').forEach(o => allowedOrigins.push(o.trim()))
 }
 
+// ─── CORS ─────────────────────────────────────────────────────────────────────
 const corsOptions = {
   origin: (origin: string | undefined, cb: (err: Error | null, allow?: boolean) => void) => {
-    // Allow requests with no origin (e.g. mobile apps, curl, Render health checks)
     if (!origin || allowedOrigins.includes(origin)) return cb(null, true)
     cb(new Error(`CORS blocked: ${origin}`))
   },
@@ -46,41 +48,91 @@ const corsOptions = {
   allowedHeaders: ['Content-Type', 'Authorization'],
 }
 
+// ─── Security: Helmet (HTTP headers) ─────────────────────────────────────────
+// Adds: X-Frame-Options, X-Content-Type-Options, HSTS, X-XSS-Protection, etc.
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' }, // allow image serving
+  contentSecurityPolicy: false, // handled by Cloudflare
+}))
+
+// ─── Rate Limiters ────────────────────────────────────────────────────────────
+// Auth endpoints: 10 requests per 15 minutes per IP
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { detail: 'Too many requests, please try again later.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
+// OTP endpoint: 5 requests per 10 minutes (prevent SMS spam)
+const otpLimiter = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  max: 5,
+  message: { detail: 'Too many OTP requests. Please wait 10 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
+// General API: 200 requests per minute per IP
+const generalLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 200,
+  message: { detail: 'Rate limit exceeded. Slow down.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+})
+
+// ─── Socket.IO ────────────────────────────────────────────────────────────────
 const io = new SocketIOServer(httpServer, {
   cors: {
     origin: allowedOrigins,
     methods: ['GET', 'POST'],
     credentials: true,
   },
+  // Limit payload size on socket messages
+  maxHttpBufferSize: 1e5, // 100KB max socket message
 })
 
 const PORT = process.env.PORT || 8000
 
-// Middleware
+// ─── Core Middleware ──────────────────────────────────────────────────────────
 app.use(cors(corsOptions))
-app.options('*', cors(corsOptions)) // pre-flight
-app.use(express.json())
-app.use(express.urlencoded({ extended: true }))
+app.options('*', cors(corsOptions))
 
-// Serve uploaded files statically
+// Body size limits — prevent DoS via huge payloads
+app.use(express.json({ limit: '1mb' }))
+app.use(express.urlencoded({ extended: true, limit: '1mb' }))
+
+// ─── NoSQL Injection Prevention ───────────────────────────────────────────────
+// Strips MongoDB operators ($, .) from request body/query to prevent injection
+app.use((req, _res, next) => {
+  req.body = mongoSanitize(req.body)
+  req.query = mongoSanitize(req.query) as any
+  req.params = mongoSanitize(req.params)
+  next()
+})
+
+// ─── Static files ─────────────────────────────────────────────────────────────
 app.use('/uploads', express.static(path.join(__dirname, '../uploads')))
 
-// Health check
+// ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'BuildEase API is running' })
 })
 
-// API Routes
-app.use('/api/auth', authRoutes)
-app.use('/api/profile', profileRoutes)
-app.use('/api/professionals', professionalsRoutes)
-app.use('/api/projects', projectsRoutes)
-app.use('/api/materials', materialsRoutes)
-app.use('/api/orders', ordersRoutes)
-app.use('/api/messages', messagesRoutes)
+// ─── API Routes ───────────────────────────────────────────────────────────────
+app.use('/api/auth', authLimiter, authRoutes)
+app.use('/api/auth/send-otp', otpLimiter) // extra limiter on OTP specifically
+app.use('/api/profile', generalLimiter, profileRoutes)
+app.use('/api/professionals', generalLimiter, professionalsRoutes)
+app.use('/api/projects', generalLimiter, projectsRoutes)
+app.use('/api/materials', generalLimiter, materialsRoutes)
+app.use('/api/orders', generalLimiter, ordersRoutes)
+app.use('/api/messages', generalLimiter, messagesRoutes)
 
-// Socket.io connection handling — JWT verified on connect
-const connectedUsers = new Map<string, string>() // userId -> socketId
+// ─── Socket.IO Auth + Events ──────────────────────────────────────────────────
+const connectedUsers = new Map<string, string>()
 
 io.use((socket, next) => {
   const token = socket.handshake.auth?.token as string | undefined
@@ -94,10 +146,10 @@ io.use((socket, next) => {
 io.on('connection', (socket) => {
   const userId = (socket as any).userId as string
   connectedUsers.set(userId, socket.id)
-  console.log(`✅ User ${userId} connected with socket ${socket.id}`)
 
-  // Handle new message — sender must match authenticated userId
-  socket.on('new_message', (data: { receiver_id: string; message: any }) => {
+  socket.on('receive_message', (data: { receiver_id: string; message: any }) => {
+    // Validate receiver_id is a string, not an object (NoSQL injection via socket)
+    if (typeof data.receiver_id !== 'string') return
     const receiverSocketId = connectedUsers.get(data.receiver_id)
     if (receiverSocketId) {
       io.to(receiverSocketId).emit('receive_message', data.message)
@@ -106,30 +158,36 @@ io.on('connection', (socket) => {
 
   socket.on('disconnect', () => {
     connectedUsers.delete(userId)
-    console.log(`👋 User ${userId} disconnected`)
   })
 })
 
-// 404 handler
+// ─── 404 Handler ─────────────────────────────────────────────────────────────
 app.use((req, res) => {
   res.status(404).json({ detail: 'Route not found' })
 })
 
-// Error handler
-app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
+// ─── Global Error Handler ─────────────────────────────────────────────────────
+// Never leak internal error details in production
+app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  const isProd = process.env.NODE_ENV === 'production'
   console.error('Error:', err)
-  res.status(500).json({ detail: err.message || 'Internal server error' })
+
+  if (err.message?.startsWith('CORS blocked')) {
+    return res.status(403).json({ detail: 'CORS: origin not allowed' })
+  }
+
+  res.status(err.status || 500).json({
+    detail: isProd ? 'Internal server error' : (err.message || 'Internal server error'),
+  })
 })
 
-// Connect to MongoDB and start server
+// ─── Start Server ─────────────────────────────────────────────────────────────
 const startServer = async () => {
   try {
     await connectDB()
     httpServer.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`)
-      console.log(`📡 Socket.io ready for real-time connections`)
-      console.log(`📁 Static files served from /uploads`)
-      console.log(`🔗 API endpoints available at /api/*`)
+      console.log(`🔒 Security: Helmet, Rate limiting, NoSQL sanitization enabled`)
     })
   } catch (error) {
     console.error('Failed to start server:', error)

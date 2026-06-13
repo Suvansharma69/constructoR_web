@@ -2,9 +2,8 @@ import jwt from 'jsonwebtoken'
 
 const JWT_SECRET = process.env.JWT_SECRET
 
-// Fail fast at startup if secret is not configured
 if (!JWT_SECRET) {
-  throw new Error('FATAL: JWT_SECRET environment variable is not set. Server cannot start securely.')
+  throw new Error('FATAL: JWT_SECRET environment variable is not set.')
 }
 
 export const generateToken = (userId: string): string => {
