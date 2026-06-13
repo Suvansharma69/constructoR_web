@@ -164,9 +164,10 @@ export const getUserProjects = async (user_id: string) => {
   }
 }
 
-export const getAvailableProjects = async (role: string, city?: string) => {
+export const getAvailableProjects = async (role: string, location?: string) => {
   try {
-    return await api.get(`/projects/available/${role}`, { params: city ? { city } : {} })
+    // Backend reads req.query.location — must use 'location' not 'city'
+    return await api.get(`/projects/available/${role}`, { params: location ? { location } : {} })
   } catch (err) {
     if (isMockable(err)) return { data: [] }
     throw err

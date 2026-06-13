@@ -71,9 +71,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     localStorage.setItem('be_token', t)
   }
 
-  const updateUser = (u: User) => {
-    setUser(u)
-    localStorage.setItem('be_user', JSON.stringify(u))
+  const updateUser = (updatedData: Partial<User>) => {
+    // Merge with existing user — profile update API doesn't return all fields (e.g. email_verified)
+    // Without merge, those fields get wiped from localStorage on every profile save
+    setUser(prev => {
+      const merged = prev ? { ...prev, ...updatedData, profile: { ...(prev.profile || {}), ...(updatedData.profile || {}) } } : updatedData as User
+      localStorage.setItem('be_user', JSON.stringify(merged))
+      return merged
+    })
   }
 
   const logout = async () => {
