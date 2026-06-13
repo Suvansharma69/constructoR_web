@@ -1,14 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../store/auth'
 import { useToast } from '../../components/Toast'
-import { getUserProjects, createProject } from '../../api/api'
+import { getUserProjects, createProject } from '../../api/supabaseApi'
+import type { Project } from '../../lib/supabase'
 
 const CITIES = ['Mumbai','Delhi','Bangalore','Hyderabad','Chennai','Kolkata','Pune','Ahmedabad','Jaipur','Lucknow']
 const TIMELINES = ['1–3 months','3–6 months','6–12 months','1–2 years','2+ years']
 const PROJECT_TYPES = ['new_construction','renovation','commercial','interior_design']
 const TYPE_LABEL: Record<string,string> = { new_construction:'🏗️ New Construction', renovation:'🔨 Renovation', commercial:'🏢 Commercial', interior_design:'🎨 Interior Design' }
-
-interface Project { _id:string; project_type:string; title:string; location:string; budget:number; timeline:string; status:string; description?:string; created_at:string }
 
 const INIT_FORM = { project_type:'new_construction', title:'', location:'', budget:'', timeline:'', description:'' }
 
@@ -23,21 +22,23 @@ export default function HomeownerProjects() {
 
   const load = () => {
     if (!user) return
-    getUserProjects(user._id)
-      .then(r => setProjects(r.data))
+    getUserProjects(user.id)
+      .then(data => setProjects(data))
       .catch(() => toast('Failed to load projects', 'error'))
       .finally(() => setLoading(false))
   }
-  useEffect(() => { load() }, [user?._id])
+  useEffect(() => { load() }, [user?.id])
 
   const handleCreate = async () => {
+    if (!user) return
     if (!form.title.trim()) return toast('Please enter a project title', 'error')
     if (!form.location) return toast('Please select a location', 'error')
     if (!form.budget || parseFloat(form.budget) <= 0) return toast('Please enter a valid budget', 'error')
     if (!form.timeline) return toast('Please select a timeline', 'error')
     setSaving(true)
     try {
-      const res = await createProject(user!._id, {
+      const project = await createProject({
+        user_id: user.id,
         project_type: form.project_type,
         title: form.title.trim(),
         location: form.location,
@@ -45,13 +46,12 @@ export default function HomeownerProjects() {
         timeline: form.timeline,
         description: form.description.trim(),
       })
-      // Optimistic update — add new project to top of list immediately
-      setProjects(prev => [res.data, ...prev])
+      setProjects(prev => [project, ...prev])
       toast('Project created! Professionals will start bidding soon 🎉', 'success')
       setShowModal(false)
       setForm(INIT_FORM)
     } catch (e: any) {
-      toast(e.response?.data?.detail || 'Failed to create project', 'error')
+      toast(e.message || 'Failed to create project', 'error')
     } finally { setSaving(false) }
   }
 
@@ -83,7 +83,7 @@ export default function HomeownerProjects() {
       ) : (
         <div style={{display:'flex',flexDirection:'column',gap:16}}>
           {projects.map(p => (
-            <div key={p._id} className="project-card">
+            <div key={p.id} className="project-card">
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8,flexWrap:'wrap',gap:8}}>
                 <div style={{fontWeight:800,fontSize:16}}>{p.title}</div>
                 <span className={`badge ${statusBadge(p.status)}`}>{p.status.replace(/_/g,' ').toUpperCase()}</span>

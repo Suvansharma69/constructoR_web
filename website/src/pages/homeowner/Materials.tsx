@@ -2,13 +2,13 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/auth'
 import { useToast } from '../../components/Toast'
-import { getMaterials, createOrder } from '../../api/api'
+import { getMaterials, createOrder } from '../../api/supabaseApi'
+import type { Material } from '../../lib/supabase'
 
 const CATEGORIES = ['All','Cement','Steel','Bricks','Tiles','Electrical','Plumbing','Paint','Hardware','Flooring','Doors & Windows']
 const CAT_ICONS: Record<string,string> = { Cement:'🪨',Steel:'🔩',Bricks:'🧱',Tiles:'🔲',Electrical:'⚡',Plumbing:'💧',Paint:'🎨',Hardware:'🔧',Flooring:'🪵','Doors & Windows':'🚪' }
 const CAT_COLORS: Record<string,string> = { Cement:'#6B7280',Steel:'#3B82F6',Bricks:'#EF4444',Tiles:'#8B5CF6',Electrical:'#F59E0B',Plumbing:'#06B6D4',Paint:'#EC4899',Hardware:'#78716C',Flooring:'#10B981','Doors & Windows':'#D97706' }
 
-interface Material { _id:string; name:string; category:string; price:number; unit:string; brand?:string; description?:string; stock?:number; in_stock?:boolean; vendor_name?:string; city?:string }
 interface CartItem { material: Material; qty: number }
 
 export default function Materials() {
@@ -25,7 +25,10 @@ export default function Materials() {
   const [ordering, setOrdering] = useState(false)
 
   useEffect(() => {
-    getMaterials().then(r => setMaterials(r.data)).catch(() => toast('Failed to load materials','error')).finally(() => setLoading(false))
+    getMaterials()
+      .then(data => setMaterials(data))
+      .catch(() => toast('Failed to load materials','error'))
+      .finally(() => setLoading(false))
   }, [])
 
   const filtered = useMemo(() => materials.filter(m => {
@@ -36,24 +39,26 @@ export default function Materials() {
 
   const addToCart = (mat: Material) => {
     setCart(p => {
-      const ex = p.find(c => c.material._id === mat._id)
-      if (ex) return p.map(c => c.material._id === mat._id ? {...c, qty: c.qty+1} : c)
+      const ex = p.find(c => c.material.id === mat.id)
+      if (ex) return p.map(c => c.material.id === mat.id ? {...c, qty: c.qty+1} : c)
       return [...p, {material: mat, qty: 1}]
     })
     toast(`${mat.name} added to cart 🛒`, 'success')
   }
 
-  const removeFromCart = (id: string) => setCart(p => p.filter(c => c.material._id !== id))
+  const removeFromCart = (id: string) => setCart(p => p.filter(c => c.material.id !== id))
 
   const totalAmount = cart.reduce((s,c) => s + c.material.price * c.qty, 0)
 
   const placeOrder = async () => {
     if (!address.trim()) return toast('Please enter delivery address','error')
     if (cart.length === 0) return
+    if (!user) return
     setOrdering(true)
     try {
-      await createOrder(user!._id, {
-        items: cart.map(c => ({material_id: c.material._id, quantity: c.qty, price: c.material.price})),
+      await createOrder({
+        user_id: user.id,
+        items: cart.map(c => ({material_id: c.material.id, quantity: c.qty, price: c.material.price})),
         delivery_address: address,
         total_amount: totalAmount,
       })
@@ -63,7 +68,7 @@ export default function Materials() {
       setAddress('')
       navigate('/homeowner/orders')
     } catch (e: any) {
-      toast(e.response?.data?.detail || 'Failed to place order','error')
+      toast(e.message || 'Failed to place order','error')
     } finally { setOrdering(false) }
   }
 
@@ -100,7 +105,7 @@ export default function Materials() {
       ) : (
         <div className="grid-3">
           {filtered.map(mat => (
-            <div key={mat._id} className="mat-card">
+            <div key={mat.id} className="mat-card">
               <div className="mat-top">
                 <div className="mat-icon" style={{background:`${CAT_COLORS[mat.category] || '#4F46E5'}20`}}>
                   {CAT_ICONS[mat.category] || '📦'}
@@ -116,11 +121,11 @@ export default function Materials() {
               <div className="mat-footer">
                 <div>
                   <div className="mat-price" style={{color:CAT_COLORS[mat.category]||'var(--primary)'}}>₹{mat.price}<span style={{fontSize:12,fontWeight:400,color:'var(--text-muted)'}}> /{mat.unit||'unit'}</span></div>
-                  <div className={`mat-stock badge ${mat.in_stock !== false ? 'badge-green' : 'badge-red'}`}>
-                    {mat.in_stock !== false ? '✅ In Stock' : '❌ Out'}
+                  <div className={`mat-stock badge ${mat.in_stock ? 'badge-green' : 'badge-red'}`}>
+                    {mat.in_stock ? '✅ In Stock' : '❌ Out'}
                   </div>
                 </div>
-                <button className="btn btn-sm btn-primary" onClick={() => addToCart(mat)} disabled={mat.in_stock === false}>
+                <button className="btn btn-sm btn-primary" onClick={() => addToCart(mat)} disabled={!mat.in_stock}>
                   Add 🛒
                 </button>
               </div>
@@ -142,13 +147,13 @@ export default function Materials() {
             ) : (
               <>
                 {cart.map(item => (
-                  <div key={item.material._id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 0',borderBottom:'1px solid var(--border)'}}>
+                  <div key={item.material.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 0',borderBottom:'1px solid var(--border)'}}>
                     <div style={{fontSize:24}}>{CAT_ICONS[item.material.category]||'📦'}</div>
                     <div style={{flex:1}}>
                       <div style={{fontWeight:700,fontSize:14}}>{item.material.name}</div>
                       <div style={{fontSize:12,color:'var(--text-muted)'}}>₹{item.material.price} × {item.qty} = ₹{(item.material.price*item.qty).toLocaleString('en-IN')}</div>
                     </div>
-                    <button className="btn btn-xs btn-danger" onClick={() => removeFromCart(item.material._id)}>✕</button>
+                    <button className="btn btn-xs btn-danger" onClick={() => removeFromCart(item.material.id)}>✕</button>
                   </div>
                 ))}
                 <div style={{fontFamily:'Outfit',fontSize:20,fontWeight:900,textAlign:'right',margin:'16px 0',color:'var(--secondary)'}}>

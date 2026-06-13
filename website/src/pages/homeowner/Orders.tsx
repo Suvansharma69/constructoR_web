@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../store/auth'
 import { useToast } from '../../components/Toast'
-import { getUserOrders } from '../../api/api'
-
-interface Order { _id:string; items:any[]; delivery_address:string; total_amount:number; status:string; created_at:string }
+import { getUserOrders } from '../../api/supabaseApi'
+import type { Order } from '../../lib/supabase'
 
 export default function HomeownerOrders() {
   const { user } = useAuth()
@@ -12,8 +11,9 @@ export default function HomeownerOrders() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    getUserOrders(user!._id).then(r => setOrders(r.data)).catch(() => toast('Failed to load orders','error')).finally(() => setLoading(false))
-  }, [])
+    if (!user) return
+    getUserOrders(user.id).then(data => setOrders(data)).catch(() => toast('Failed to load orders','error')).finally(() => setLoading(false))
+  }, [user?.id])
 
   const statusBadge = (s: string) => {
     if (s === 'delivered') return 'badge-green'
@@ -38,7 +38,7 @@ export default function HomeownerOrders() {
       ) : (
         <div style={{display:'flex',flexDirection:'column',gap:16}}>
           {orders.map((order, idx) => (
-            <div key={order._id} className="card">
+            <div key={order.id} className="card">
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:12,flexWrap:'wrap',gap:8}}>
                 <div>
                   <div style={{fontWeight:800,fontSize:16,marginBottom:4}}>Order #{String(idx+1).padStart(3,'0')}</div>

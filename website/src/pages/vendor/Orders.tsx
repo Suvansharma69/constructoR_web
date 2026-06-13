@@ -1,9 +1,8 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../store/auth'
 import { useToast } from '../../components/Toast'
-import { getVendorOrders, updateOrderStatus } from '../../api/api'
-
-interface Order { _id:string; items:any[]; delivery_address:string; total_amount:number; status:string; created_at:string }
+import { getVendorOrders, updateOrderStatus } from '../../api/supabaseApi'
+import type { Order } from '../../lib/supabase'
 
 export default function VendorOrders() {
   const { user } = useAuth()
@@ -13,9 +12,10 @@ export default function VendorOrders() {
   const [updating, setUpdating] = useState<string|null>(null)
 
   const load = () => {
-    getVendorOrders(user!._id).then(r => setOrders(r.data)).catch(() => toast('Failed to load','error')).finally(() => setLoading(false))
+    if (!user) return
+    getVendorOrders(user.id).then(data => setOrders(data)).catch(() => toast('Failed to load','error')).finally(() => setLoading(false))
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { if (user) load() }, [user?.id])
 
   const handleStatus = async (orderId: string, status: string) => {
     setUpdating(orderId)
@@ -49,7 +49,7 @@ export default function VendorOrders() {
       ) : (
         <div style={{display:'flex',flexDirection:'column',gap:16}}>
           {orders.map((order, idx) => (
-            <div key={order._id} className="card">
+            <div key={order.id} className="card">
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:8,marginBottom:12}}>
                 <div>
                   <div style={{fontWeight:800,fontSize:16,marginBottom:4}}>Order #{String(idx+1).padStart(3,'0')}</div>
@@ -67,13 +67,13 @@ export default function VendorOrders() {
               </div>
               {order.status === 'pending' && (
                 <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-                  <button className="btn btn-green btn-sm" onClick={() => handleStatus(order._id,'processing')} disabled={!!updating}>Processing</button>
-                  <button className="btn btn-sm" style={{background:'linear-gradient(135deg,#2563EB,#1D4ED8)',color:'white'}} onClick={() => handleStatus(order._id,'delivered')} disabled={!!updating}>Mark Delivered</button>
-                  <button className="btn btn-danger btn-sm" onClick={() => handleStatus(order._id,'cancelled')} disabled={!!updating}>Cancel</button>
+                  <button className="btn btn-green btn-sm" onClick={() => handleStatus(order.id,'processing')} disabled={!!updating}>Processing</button>
+                  <button className="btn btn-sm" style={{background:'linear-gradient(135deg,#2563EB,#1D4ED8)',color:'white'}} onClick={() => handleStatus(order.id,'delivered')} disabled={!!updating}>Mark Delivered</button>
+                  <button className="btn btn-danger btn-sm" onClick={() => handleStatus(order.id,'cancelled')} disabled={!!updating}>Cancel</button>
                 </div>
               )}
               {order.status === 'processing' && (
-                <button className="btn btn-green btn-sm" onClick={() => handleStatus(order._id,'delivered')} disabled={!!updating}>✅ Mark Delivered</button>
+                <button className="btn btn-green btn-sm" onClick={() => handleStatus(order.id,'delivered')} disabled={!!updating}>Mark Delivered</button>
               )}
             </div>
           ))}

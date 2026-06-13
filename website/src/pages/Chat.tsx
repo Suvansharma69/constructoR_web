@@ -1,18 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
-import { io, Socket } from 'socket.io-client'
+import { supabase } from '../lib/supabase'
 import { useAuth } from '../store/auth'
 import { useToast } from '../components/Toast'
-import { getConversations, getConversation, sendMessage, BACKEND_URL } from '../api/api'
-
-interface Message { _id:string; sender_id:string; receiver_id:string; message:string; created_at:string; read:boolean }
-interface Conversation { partner_id:string; partner_name:string; partner_role:string; last_message?:any; unread_count:number }
+import { getConversations, getConversation, sendMessage } from '../api/supabaseApi'
+import type { Message, Conversation } from '../lib/supabase'
 
 const ROLE_EMOJI: Record<string,string> = { homeowner:'🏠', architect:'📐', contractor:'🔨', interior_designer:'🎨', vendor:'🏪' }
 
 export default function Chat() {
   const { userId: paramUserId } = useParams<{ userId?: string }>()
-  const { user, token } = useAuth()
+  const { user } = useAuth()
   const { toast } = useToast()
 
   const [convs, setConvs] = useState<Conversation[]>([])
@@ -21,7 +19,6 @@ export default function Chat() {
   const [text, setText] = useState('')
   const [loading, setLoading] = useState(true)
   const [sending, setSending] = useState(false)
-  const socketRef = useRef<Socket | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
   const activeIdRef = useRef<string | null>(activeId)
 
@@ -29,38 +26,40 @@ export default function Chat() {
     activeIdRef.current = activeId
   }, [activeId])
 
-  // Connect socket ONCE — send JWT in handshake auth so backend can verify identity
+  // Subscribe to real-time messages
   useEffect(() => {
-    if (!user || !token) return
+    if (!user) return
 
-    const socket = io(BACKEND_URL, {
-      transports: ['websocket', 'polling'],
-      auth: { token }, // ← JWT sent to backend for authentication
-    })
-    socketRef.current = socket
-
-    socket.on('connect_error', (err) => {
-      console.warn('Socket connection error:', err.message)
-    })
-
-    // Backend emits 'receive_message' (not 'new_message')
-    socket.on('receive_message', (msg: Message) => {
-      const currentActiveId = activeIdRef.current
-      if (msg.sender_id === currentActiveId || msg.receiver_id === currentActiveId) {
-        setMsgs(prev => [...prev, msg])
-      }
-      loadConvs()
-    })
+    const channel = supabase
+      .channel('messages')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'messages',
+          filter: `or(sender_id.eq.${user.id},receiver_id.eq.${user.id})`,
+        },
+        (payload) => {
+          const newMsg = payload.new as Message
+          const currentActiveId = activeIdRef.current
+          if (newMsg.sender_id === currentActiveId || newMsg.receiver_id === currentActiveId) {
+            setMsgs(prev => [...prev, newMsg])
+          }
+          loadConvs()
+        }
+      )
+      .subscribe()
 
     return () => {
-      socket.disconnect()
+      supabase.removeChannel(channel)
     }
-  }, [user, token]) // Reconnect only if user/token changes
+  }, [user?.id])
 
   const loadConvs = useCallback(() => {
     if (!user) return
-    getConversations(user._id)
-      .then(r => setConvs(r.data))
+    getConversations(user.id)
+      .then(data => setConvs(data))
       .catch(() => {})
       .finally(() => setLoading(false))
   }, [user])
@@ -72,12 +71,11 @@ export default function Chat() {
   useEffect(() => {
     if (!activeId || !user) return
     setMsgs([])
-    getConversation(user._id, activeId)
-      .then(r => setMsgs(r.data))
+    getConversation(user.id, activeId)
+      .then(data => setMsgs(data))
       .catch(() => toast('Failed to load messages', 'error'))
   }, [activeId, user])
 
-  // Auto-scroll to latest message
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [msgs])
@@ -98,8 +96,8 @@ export default function Chat() {
     const msgText = text.trim()
     setText('')
     try {
-      const res = await sendMessage(user._id, { receiver_id: activeId, message: msgText })
-      setMsgs(prev => [...prev, res.data])
+      const newMsg = await sendMessage({ receiver_id: activeId, message: msgText })
+      setMsgs(prev => [...prev, newMsg])
       loadConvs()
     } catch {
       toast('Failed to send', 'error')
@@ -115,7 +113,7 @@ export default function Chat() {
     <div className="chat-layout">
       {/* Conversations sidebar */}
       <div className="chat-sidebar">
-        <div className="chat-sidebar-header">💬 Messages</div>
+        <div className="chat-sidebar-header">Messages</div>
         {loading ? (
           <div className="spinner-wrap"><div className="spinner" /></div>
         ) : convs.length === 0 ? (
@@ -178,10 +176,10 @@ export default function Chat() {
                 </div>
               )}
               {msgs.map(msg => {
-                const isOut = msg.sender_id === user?._id
+                const isOut = msg.sender_id === user?.id
                 const time = new Date(msg.created_at).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
                 return (
-                  <div key={msg._id} className={`msg ${isOut ? 'msg-out' : 'msg-in'}`}>
+                  <div key={msg.id} className={`msg ${isOut ? 'msg-out' : 'msg-in'}`}>
                     <div className="msg-bubble">{msg.message}</div>
                     <div className="msg-time">{time}</div>
                   </div>
@@ -199,7 +197,7 @@ export default function Chat() {
                 onKeyDown={e => e.key === 'Enter' && !e.shiftKey && handleSend()}
               />
               <button className="chat-send" onClick={handleSend} disabled={!text.trim() || sending}>
-                ➤
+                Send
               </button>
             </div>
           </>

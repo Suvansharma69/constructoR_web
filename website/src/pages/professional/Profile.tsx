@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { useAuth } from '../../store/auth'
 import { useToast } from '../../components/Toast'
-import { updateProfessionalProfile } from '../../api/api'
+import { updateProfessionalProfile } from '../../api/supabaseApi'
 
 const CITIES = ['Mumbai','Delhi','Bangalore','Hyderabad','Chennai','Kolkata','Pune','Ahmedabad','Jaipur','Lucknow']
 const SPECIALIZATIONS: Record<string,string[]> = {
@@ -13,13 +13,12 @@ const SPECIALIZATIONS: Record<string,string[]> = {
 export default function ProfessionalProfile() {
   const { user, updateUser } = useAuth()
   const { toast } = useToast()
-  const p = user?.profile || {}
-  const [name, setName] = useState((p as any).name || '')
-  const [city, setCity] = useState((p as any).city || '')
-  const [experience, setExperience] = useState(String((p as any).experience || ''))
-  const [specs, setSpecs] = useState<string[]>((p as any).specializations || [])
-  const [priceRange, setPriceRange] = useState((p as any).price_range || '')
-  const [consultFee, setConsultFee] = useState(String((p as any).consultation_fee || ''))
+  const [name, setName] = useState(user?.name || '')
+  const [city, setCity] = useState(user?.city || '')
+  const [experience, setExperience] = useState(String(user?.experience || ''))
+  const [specs, setSpecs] = useState<string[]>(user?.specializations || [])
+  const [priceRange, setPriceRange] = useState(user?.price_range || '')
+  const [consultFee, setConsultFee] = useState(String(user?.consultation_fee || ''))
   const [saving, setSaving] = useState(false)
 
   const roleLabel = { architect:'Architect', contractor:'Contractor', interior_designer:'Interior Designer' }[user?.role||''] || ''
@@ -27,21 +26,22 @@ export default function ProfessionalProfile() {
   const toggleSpec = (s: string) => setSpecs(p => p.includes(s) ? p.filter(x => x !== s) : [...p, s])
 
   const save = async () => {
+    if (!user) return
     if (!name || !city || !experience) return toast('Fill all required fields','error')
     setSaving(true)
     try {
-      const res = await updateProfessionalProfile(user!._id, {
+      const updated = await updateProfessionalProfile(user.id, {
         name, city, experience: parseInt(experience), specializations: specs,
         price_range: priceRange, consultation_fee: consultFee ? parseFloat(consultFee) : undefined,
       })
-      updateUser(res.data)
+      updateUser(updated)
       toast('Profile updated!','success')
     } catch { toast('Failed to save','error') } finally { setSaving(false) }
   }
 
   return (
     <div style={{maxWidth:600}}>
-      <h1 style={{fontSize:28,fontWeight:900,marginBottom:24}}>👤 My Profile</h1>
+      <h1 style={{fontSize:28,fontWeight:900,marginBottom:24}}>My Profile</h1>
       <div className="card" style={{marginBottom:20}}>
         <div style={{display:'flex',gap:16,alignItems:'center',marginBottom:20}}>
           <div className="user-avatar" style={{width:64,height:64,fontSize:26,borderRadius:20}}>{name.charAt(0)||'?'}</div>
@@ -85,14 +85,14 @@ export default function ProfessionalProfile() {
             </div>
           </div>
         )}
-        <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : '💾 Save Profile'}</button>
+        <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save Profile'}</button>
       </div>
       <div className="card" style={{background:'rgba(79,70,229,0.06)'}}>
         <div style={{fontWeight:700,marginBottom:8}}>Account Info</div>
         <div style={{fontSize:14,color:'var(--text-muted)',lineHeight:2}}>
           <div>📞 {user?.contact}</div>
           <div>🔖 Role: {roleLabel}</div>
-          <div>🆔 ID: {user?._id}</div>
+          <div>🆔 ID: {user?.id}</div>
         </div>
       </div>
     </div>

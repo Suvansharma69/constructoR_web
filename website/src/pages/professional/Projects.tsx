@@ -2,9 +2,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/auth'
 import { useToast } from '../../components/Toast'
-import { getAvailableProjects, bidOnProject } from '../../api/api'
-
-interface Project { _id:string; user_id?:any; project_type:string; title:string; location:string; budget:number; timeline:string; status:string; description?:string; created_at:string }
+import { getAvailableProjects, bidOnProject } from '../../api/supabaseApi'
+import type { Project } from '../../lib/supabase'
 
 const TYPE_LABEL: Record<string,string> = { new_construction:'🏗️ New Construction', renovation:'🔨 Renovation', commercial:'🏢 Commercial', interior_design:'🎨 Interior Design' }
 const INIT_BID = { proposal:'', estimated_cost:'', estimated_days:'' }
@@ -24,30 +23,30 @@ export default function ProfessionalProjects() {
   useEffect(() => {
     if (!user) return
     getAvailableProjects(user.role)
-      .then(r => setProjects(r.data))
+      .then(data => setProjects(data))
       .catch(() => toast('Failed to load projects', 'error'))
       .finally(() => setLoading(false))
   }, [user?.role])
 
   const handleBid = async (projectId: string) => {
-    // Validate all required bid fields
+    if (!user) return
     if (!bidForm.proposal.trim()) return toast('Please write your proposal', 'error')
     if (!bidForm.estimated_cost || parseFloat(bidForm.estimated_cost) <= 0) return toast('Please enter your cost estimate', 'error')
     if (!bidForm.estimated_days || parseInt(bidForm.estimated_days) <= 0) return toast('Please enter estimated days', 'error')
 
     setBidding(projectId)
     try {
-      await bidOnProject(projectId, user!._id, {
+      await bidOnProject(projectId, user.id, {
         proposal: bidForm.proposal.trim(),
         estimated_cost: parseFloat(bidForm.estimated_cost),
         estimated_days: parseInt(bidForm.estimated_days),
       })
-      toast('Bid submitted! 🎉 The homeowner will review your proposal.', 'success')
+      toast('Bid submitted! The homeowner will review your proposal.', 'success')
       setSubmittedBids(prev => new Set([...prev, projectId]))
       setActiveBidProject(null)
       setBidForm(INIT_BID)
     } catch (e: any) {
-      toast(e.response?.data?.detail || 'Failed to submit bid', 'error')
+      toast(e.message || 'Failed to submit bid', 'error')
     } finally { setBidding(null) }
   }
 
@@ -81,16 +80,16 @@ export default function ProfessionalProjects() {
       ) : (
         <div style={{display:'flex',flexDirection:'column',gap:16}}>
           {filtered.map(p => {
-            const myBidSubmitted = submittedBids.has(p._id)
-            const ownerId = typeof p.user_id === 'object' ? p.user_id?._id : p.user_id
+            const myBidSubmitted = submittedBids.has(p.id)
+            const ownerId = p.user_id
 
             return (
-              <div key={p._id} className="project-card">
+              <div key={p.id} className="project-card">
                 <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',flexWrap:'wrap',gap:8,marginBottom:8}}>
                   <div style={{fontWeight:800,fontSize:16}}>{p.title}</div>
                   <div style={{display:'flex',gap:8,alignItems:'center'}}>
                     <span className="badge badge-blue">{TYPE_LABEL[p.project_type] || p.project_type}</span>
-                    {myBidSubmitted && <span className="badge badge-green">✅ Bid Submitted</span>}
+                    {myBidSubmitted && <span className="badge badge-green">Bid Submitted</span>}
                     {!myBidSubmitted && <span className="badge badge-amber">OPEN</span>}
                   </div>
                 </div>
@@ -105,20 +104,20 @@ export default function ProfessionalProjects() {
                 <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
                   {!myBidSubmitted && (
                     <button className="btn btn-primary btn-sm" onClick={() => {
-                      setActiveBidProject(activeBidProject === p._id ? null : p._id)
+                      setActiveBidProject(activeBidProject === p.id ? null : p.id)
                       setBidForm(INIT_BID)
                     }}>
-                      {activeBidProject === p._id ? '✕ Cancel Bid' : '📝 Submit Bid'}
+                      {activeBidProject === p.id ? 'Cancel Bid' : 'Submit Bid'}
                     </button>
                   )}
                   <button className="btn btn-outline btn-sm" onClick={() => navigate(ownerId ? `/chat/${ownerId}` : '/chat')}>
-                    💬 Chat with Owner
+                    Chat with Owner
                   </button>
                 </div>
 
-                {activeBidProject === p._id && !myBidSubmitted && (
+                {activeBidProject === p.id && !myBidSubmitted && (
                   <div style={{marginTop:16,padding:16,background:'var(--bg2)',borderRadius:12,border:'1px solid var(--border)'}}>
-                    <div style={{fontWeight:700,marginBottom:12}}>📝 Your Bid Proposal</div>
+                    <div style={{fontWeight:700,marginBottom:12}}>Your Bid Proposal</div>
                     <div className="form-group">
                       <label className="form-label">Proposal / Cover Letter *</label>
                       <textarea
@@ -149,8 +148,8 @@ export default function ProfessionalProjects() {
                       </div>
                     </div>
                     <div style={{display:'flex',gap:10}}>
-                      <button className="btn btn-green btn-sm" onClick={() => handleBid(p._id)} disabled={!!bidding}>
-                        {bidding===p._id ? 'Submitting...' : '✅ Submit Bid'}
+                      <button className="btn btn-green btn-sm" onClick={() => handleBid(p.id)} disabled={!!bidding}>
+                        {bidding===p.id ? 'Submitting...' : 'Submit Bid'}
                       </button>
                       <button className="btn btn-outline btn-sm" onClick={() => setActiveBidProject(null)}>Cancel</button>
                     </div>

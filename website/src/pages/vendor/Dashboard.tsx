@@ -2,26 +2,28 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/auth'
 import { useToast } from '../../components/Toast'
-import { getVendorMaterials, getVendorOrders } from '../../api/api'
+import { getVendorMaterials, getVendorOrders } from '../../api/supabaseApi'
+import type { Material, Order } from '../../lib/supabase'
 
 export default function VendorDashboard() {
   const { user } = useAuth()
   const { toast } = useToast()
   const navigate = useNavigate()
-  const [materials, setMaterials] = useState<any[]>([])
-  const [orders, setOrders] = useState<any[]>([])
+  const [materials, setMaterials] = useState<Material[]>([])
+  const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    Promise.allSettled([getVendorMaterials(user!._id), getVendorOrders(user!._id)]).then(([m, o]) => {
-      if (m.status === 'fulfilled') setMaterials(m.value.data || [])
-      if (o.status === 'fulfilled') setOrders(o.value.data || [])
+    if (!user) return
+    Promise.allSettled([getVendorMaterials(user.id), getVendorOrders(user.id)]).then(([m, o]) => {
+      if (m.status === 'fulfilled') setMaterials(m.value || [])
+      if (o.status === 'fulfilled') setOrders(o.value || [])
     }).finally(() => setLoading(false))
-  }, [])
+  }, [user?.id])
 
   const pending = orders.filter(o => o.status === 'pending').length
-  const revenue = orders.filter(o => o.status === 'delivered').reduce((s: number, o: any) => s + (o.total_amount||0), 0)
-  const displayName = user?.profile?.shop_name || user?.profile?.name || 'Vendor'
+  const revenue = orders.filter(o => o.status === 'delivered').reduce((s, o) => s + (o.total_amount||0), 0)
+  const displayName = user?.shop_name || user?.name || 'Vendor'
 
   const stats = [
     { icon:'🧱', label:'Products', value:materials.length.toString(), bg:'rgba(194,65,12,0.12)', color:'#F97316' },
@@ -82,15 +84,15 @@ export default function VendorDashboard() {
         </div>
       ) : (
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
-          {materials.slice(0,5).map((m: any) => (
-            <div key={m._id} className="card" style={{display:'flex',alignItems:'center',gap:14,padding:'14px 18px'}}>
+          {materials.slice(0,5).map(m => (
+            <div key={m.id} className="card" style={{display:'flex',alignItems:'center',gap:14,padding:'14px 18px'}}>
               <div style={{fontSize:24}}>🧱</div>
               <div style={{flex:1}}>
                 <div style={{fontWeight:700,fontSize:14}}>{m.name}</div>
                 <div style={{fontSize:12,color:'var(--text-muted)'}}>{m.category}</div>
               </div>
               <div style={{fontWeight:800,color:'#F97316'}}>₹{m.price}/{m.unit||'unit'}</div>
-              <span className={`badge ${m.in_stock !== false ? 'badge-green' : 'badge-red'}`}>{m.in_stock!==false?'In Stock':'Out'}</span>
+              <span className={`badge ${m.in_stock ? 'badge-green' : 'badge-red'}`}>{m.in_stock?'In Stock':'Out'}</span>
             </div>
           ))}
           {materials.length > 5 && (

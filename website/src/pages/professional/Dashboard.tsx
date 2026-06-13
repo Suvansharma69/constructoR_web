@@ -2,9 +2,8 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/auth'
 import { useToast } from '../../components/Toast'
-import { getAvailableProjects, getUserProjects, getUnreadCount } from '../../api/api'
-
-interface Project { _id:string; project_type:string; city:string; budget_range?:string; status:string; description?:string }
+import { getAvailableProjects, getUserProjects, getUnreadCount } from '../../api/supabaseApi'
+import type { Project } from '../../lib/supabase'
 
 export default function ProfessionalDashboard() {
   const { user } = useAuth()
@@ -16,20 +15,21 @@ export default function ProfessionalDashboard() {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    const role = user?.role || 'architect'
+    if (!user) return
+    const role = user.role || 'architect'
     Promise.allSettled([
       getAvailableProjects(role),
-      getUserProjects(user!._id),
-      getUnreadCount(user!._id),
+      getUserProjects(user.id),
+      getUnreadCount(user.id),
     ]).then(([avail, myProj, msgs]) => {
-      if (avail.status === 'fulfilled') setAvailable(avail.value.data || [])
-      if (myProj.status === 'fulfilled') setMine(myProj.value.data || [])
-      if (msgs.status === 'fulfilled') setUnread(msgs.value.data?.count || 0)
+      if (avail.status === 'fulfilled') setAvailable(avail.value || [])
+      if (myProj.status === 'fulfilled') setMine(myProj.value || [])
+      if (msgs.status === 'fulfilled') setUnread(msgs.value || 0)
     }).finally(() => setLoading(false))
-  }, [])
+  }, [user?.id])
 
   const roleLabel = { architect:'Architect', contractor:'Contractor', interior_designer:'Interior Designer' }[user?.role||''] || 'Professional'
-  const displayName = user?.profile?.name || user?.contact || 'Professional'
+  const displayName = user?.name || user?.contact || 'Professional'
 
   const stats = [
     { icon:'🔍', label:'Available', value: available.length.toString(), bg:'rgba(37,99,235,0.12)', color:'#60A5FA' },
@@ -97,14 +97,14 @@ export default function ProfessionalDashboard() {
       ) : (
         <div style={{display:'flex',flexDirection:'column',gap:12}}>
           {available.slice(0,5).map(p => (
-            <div key={p._id} className="project-card" style={{cursor:'pointer'}} onClick={() => navigate('/professional/projects')}>
+            <div key={p.id} className="project-card" style={{cursor:'pointer'}} onClick={() => navigate('/professional/projects')}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',flexWrap:'wrap',gap:8}}>
-                <div style={{fontWeight:700,fontSize:15}}>{p.project_type === 'build' ? '🏗️ New Build' : '🔨 Renovation'}</div>
+                <div style={{fontWeight:700,fontSize:15}}>{p.project_type === 'new_construction' ? '🏗️ New Build' : '🔨 Renovation'}</div>
                 <span className="badge badge-amber">OPEN</span>
               </div>
               <div className="project-meta" style={{marginTop:8}}>
-                <span>📍 {p.city}</span>
-                {p.budget_range && <span>💰 {p.budget_range}</span>}
+                <span>📍 {p.location}</span>
+                {p.budget && <span>💰 ₹{p.budget.toLocaleString('en-IN')}</span>}
               </div>
             </div>
           ))}

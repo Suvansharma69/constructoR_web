@@ -2,13 +2,7 @@ import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import { useToast } from '../components/Toast'
-import { firebaseLogin } from '../api/api'
-import {
-  auth,
-  createUserWithEmailAndPassword,
-  signInWithEmailAndPassword,
-  sendEmailVerification,
-} from '../lib/firebase'
+import { supabase, createUserProfile, getUser } from '../api/supabaseApi'
 
 const ROLES = [
   { id: 'homeowner', emoji: '🏠', name: 'Home Owner', desc: 'Build or renovate your home' },
@@ -21,7 +15,6 @@ const ROLES = [
 type Step = 'contact' | 'role' | 'auth'
 
 function Particles() {
-  // useMemo: compute random values ONCE, not on every render
   const particles = useMemo(() => Array.from({ length: 20 }, (_, i) => ({
     id: i,
     left: Math.random() * 100,
@@ -99,48 +92,67 @@ export default function Login() {
 
     setLoading(true)
     try {
-      let firebaseUser
-
       if (isSignUp) {
-        const cred = await createUserWithEmailAndPassword(auth, email, password)
-        firebaseUser = cred.user
-        await sendEmailVerification(firebaseUser)
-        toast('Verification email sent! Please check your inbox.', 'success')
-      } else {
-        const cred = await signInWithEmailAndPassword(auth, email, password)
-        firebaseUser = cred.user
-      }
+        // Sign up
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+        })
+        if (error) throw error
 
-      const idToken = await firebaseUser.getIdToken()
-      const res = await firebaseLogin(idToken, role, isSignUp ? name : undefined)
-      const u = res.data.user
-      login(u, res.data.token)
+        if (data.user) {
+          // Create user profile in users table
+          await createUserProfile(data.user.id, {
+            contact: email,
+            contact_type: 'email',
+            role: role as any,
+            name,
+            email_verified: false,
+            profile_completed: false,
+          })
 
-      if (!u.profile_completed) {
-        navigate('/profile-setup')
+          toast('Account created! Please check your email to verify.', 'success')
+          // Auto-login after signup
+          const userProfile = await getUser(data.user.id)
+          login(userProfile)
+          navigate('/profile-setup')
+        }
       } else {
-        if (u.role === 'homeowner') navigate('/homeowner/build')
-        else if (u.role === 'vendor') navigate('/vendor/dashboard')
-        else navigate('/professional/dashboard')
+        // Sign in
+        const { data, error } = await supabase.auth.signInWithPassword({
+          email,
+          password,
+        })
+        if (error) throw error
+
+        if (data.user) {
+          // Fetch user profile
+          const userProfile = await getUser(data.user.id)
+          login(userProfile)
+
+          if (!userProfile.profile_completed) {
+            navigate('/profile-setup')
+          } else {
+            if (userProfile.role === 'homeowner') navigate('/homeowner/build')
+            else if (userProfile.role === 'vendor') navigate('/vendor/dashboard')
+            else navigate('/professional/dashboard')
+          }
+        }
       }
     } catch (e: any) {
-      const code = e?.code || ''
-      const msg = e?.response?.data?.detail || e?.message || 'Authentication failed'
+      const message = e.message || 'Authentication failed'
 
-      if (code === 'auth/email-already-in-use') {
+      if (message.includes('already registered')) {
         toast('This email is already registered. Try signing in instead.', 'error')
         setIsSignUp(false)
-      } else if (code === 'auth/user-not-found' || code === 'auth/invalid-credential') {
-        toast('No account found with this email. Please sign up first.', 'error')
-        setIsSignUp(true)
-      } else if (code === 'auth/wrong-password') {
-        toast('Incorrect password. Please try again.', 'error')
-      } else if (code === 'auth/too-many-requests') {
-        toast('Too many attempts. Please try again later.', 'error')
-      } else if (code === 'auth/weak-password') {
+      } else if (message.includes('Invalid login credentials')) {
+        toast('Invalid email or password. Please try again.', 'error')
+      } else if (message.includes('Email not confirmed')) {
+        toast('Please check your email and verify your account first.', 'error')
+      } else if (message.includes('Password')) {
         toast('Password is too weak. Use at least 6 characters.', 'error')
       } else {
-        toast(msg, 'error')
+        toast(message, 'error')
       }
     } finally {
       setLoading(false)

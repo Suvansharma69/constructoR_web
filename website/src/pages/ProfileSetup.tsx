@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../store/auth'
 import { useToast } from '../components/Toast'
-import { updateUserProfile, updateProfessionalProfile, updateVendorProfile, uploadAvatar } from '../api/api'
+import { updateUserProfile, uploadAvatar } from '../api/supabaseApi'
 import AvatarUpload from '../components/AvatarUpload'
 import { ALL_STATES, getCitiesByState } from '../utils/locations'
+
 const SPECIALIZATIONS: Record<string, string[]> = {
   architect: ['Residential','Commercial','Interior','Landscape','Urban Planning','Renovation'],
   contractor: ['Civil','Structural','Electrical','Plumbing','Finishing','Waterproofing'],
@@ -20,22 +21,22 @@ export default function ProfileSetup() {
   const [avatarUrl, setAvatarUrl] = useState('')
 
   // Common
-  const [name, setName] = useState('')
+  const [name, setName] = useState(user?.name || '')
   const [state, setState] = useState('')
-  const [city, setCity] = useState('')
+  const [city, setCity] = useState(user?.city || '')
   const availableCities = state ? getCitiesByState(state) : []
 
   // Professional
-  const [experience, setExperience] = useState('')
-  const [specs, setSpecs] = useState<string[]>([])
-  const [priceRange, setPriceRange] = useState('')
-  const [consultFee, setConsultFee] = useState('')
+  const [experience, setExperience] = useState(user?.experience?.toString() || '')
+  const [specs, setSpecs] = useState<string[]>(user?.specializations || [])
+  const [priceRange, setPriceRange] = useState(user?.price_range || '')
+  const [consultFee, setConsultFee] = useState(user?.consultation_fee?.toString() || '')
 
   // Vendor
-  const [shopName, setShopName] = useState('')
-  const [ownerName, setOwnerName] = useState('')
-  const [address, setAddress] = useState('')
-  const [gst, setGst] = useState('')
+  const [shopName, setShopName] = useState(user?.shop_name || '')
+  const [ownerName, setOwnerName] = useState(user?.owner_name || '')
+  const [address, setAddress] = useState(user?.address || '')
+  const [gst, setGst] = useState(user?.gst_number || '')
 
   const role = user?.role || ''
   const isProf = ['architect','contractor','interior_designer'].includes(role)
@@ -45,52 +46,57 @@ export default function ProfileSetup() {
     setSpecs(p => p.includes(s) ? p.filter(x => x !== s) : [...p, s])
 
   const handleAvatarUpload = async (file: File) => {
+    if (!user) return
     setUploadingAvatar(true)
     try {
-      const res = await uploadAvatar(user!._id, file)
-      setAvatarUrl(res.data.avatar)
+      const res = await uploadAvatar(user.id, file)
+      setAvatarUrl(res.avatar)
       toast('Avatar uploaded!', 'success')
     } catch (e: any) {
-      toast(e.response?.data?.detail || 'Failed to upload avatar', 'error')
+      toast(e.message || 'Failed to upload avatar', 'error')
     } finally {
       setUploadingAvatar(false)
     }
   }
 
   const handleSubmit = async () => {
-    // Validate BEFORE setting loading — so we never freeze the spinner
-    if (!state || !city) return toast('Please select state and city', 'error')
+    if (!user) return
+    if (!city) return toast('Please select a city', 'error')
     if (role === 'homeowner' && !name) return toast('Please enter your name', 'error')
     if (isProf && (!name || !experience)) return toast('Please fill all required fields', 'error')
     if (isVendor && (!shopName || !ownerName || !address)) return toast('Please fill all required fields', 'error')
 
     setLoading(true)
     try {
-      let res: any
-      if (role === 'homeowner') {
-        res = await updateUserProfile(user!._id, { name, city })
-      } else if (isProf) {
-        res = await updateProfessionalProfile(user!._id, {
-          name, city, experience: parseInt(experience),
-          specializations: specs, price_range: priceRange,
-          consultation_fee: consultFee ? parseFloat(consultFee) : undefined,
-        })
-      } else if (isVendor) {
-        res = await updateVendorProfile(user!._id, {
-          shop_name: shopName, owner_name: ownerName, city, address, gst_number: gst,
-        })
+      const updates: any = {
+        name,
+        city,
+        profile_completed: true,
       }
 
-      // API returns updated user object directly
-      if (res?.data) {
-        updateUser(res.data)
+      if (isProf) {
+        updates.experience = parseInt(experience)
+        updates.specializations = specs
+        updates.price_range = priceRange
+        if (consultFee) updates.consultation_fee = parseFloat(consultFee)
       }
+
+      if (isVendor) {
+        updates.shop_name = shopName
+        updates.owner_name = ownerName
+        updates.address = address
+        updates.gst_number = gst
+      }
+
+      const updatedUser = await updateUserProfile(user.id, updates)
+      updateUser(updatedUser)
       toast('Profile saved!', 'success')
+
       if (role === 'homeowner') navigate('/homeowner/build')
       else if (isVendor) navigate('/vendor/dashboard')
       else navigate('/professional/dashboard')
     } catch (e: any) {
-      toast(e.response?.data?.detail || 'Failed to save profile', 'error')
+      toast(e.message || 'Failed to save profile', 'error')
     } finally {
       setLoading(false)
     }
@@ -112,7 +118,7 @@ export default function ProfileSetup() {
         {/* Avatar Upload for all users */}
         <div style={{ marginBottom: '24px' }}>
           <AvatarUpload
-            currentAvatar={avatarUrl}
+            currentAvatar={avatarUrl || user.avatar}
             onUpload={handleAvatarUpload}
             loading={uploadingAvatar}
           />
@@ -193,7 +199,7 @@ export default function ProfileSetup() {
               value={state}
               onChange={e => {
                 setState(e.target.value)
-                setCity('') // Reset city when state changes
+                setCity('')
               }}
             >
               <option value="">Select State/UT</option>

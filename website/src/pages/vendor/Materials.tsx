@@ -1,12 +1,11 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../../store/auth'
 import { useToast } from '../../components/Toast'
-import { getVendorMaterials, createMaterial, deleteMaterial } from '../../api/api'
+import { getVendorMaterials, createMaterial, deleteMaterial } from '../../api/supabaseApi'
+import type { Material } from '../../lib/supabase'
 
 const CATEGORIES = ['Cement','Steel','Bricks','Tiles','Electrical','Plumbing','Paint','Hardware','Flooring','Doors & Windows']
 const CAT_ICONS: Record<string,string> = { Cement:'🪨',Steel:'🔩',Bricks:'🧱',Tiles:'🔲',Electrical:'⚡',Plumbing:'💧',Paint:'🎨',Hardware:'🔧',Flooring:'🪵','Doors & Windows':'🚪' }
-
-interface Material { _id:string; name:string; category:string; price:number; unit:string; brand?:string; description?:string; stock?:number; in_stock?:boolean }
 
 const INIT = { name:'', category:'', price:'', unit:'piece', brand:'', description:'', stock:'', in_stock:true }
 
@@ -21,33 +20,36 @@ export default function VendorMaterials() {
   const [form, setForm] = useState(INIT)
 
   const load = () => {
-    getVendorMaterials(user!._id).then(r => setMats(r.data)).catch(() => toast('Failed to load','error')).finally(() => setLoading(false))
+    if (!user) return
+    getVendorMaterials(user.id).then(data => setMats(data)).catch(() => toast('Failed to load','error')).finally(() => setLoading(false))
   }
-  useEffect(() => { load() }, [])
+  useEffect(() => { if (user) load() }, [user?.id])
 
   const handleCreate = async () => {
+    if (!user) return
     if (!form.name || !form.category || !form.price) return toast('Fill name, category and price','error')
     setSaving(true)
     try {
-      await createMaterial(user!._id, {
+      await createMaterial({
+        vendor_id: user.id,
         name: form.name, category: form.category, price: parseFloat(form.price),
         unit: form.unit, brand: form.brand, description: form.description,
         stock: form.stock ? parseInt(form.stock) : 0, in_stock: form.in_stock,
-        vendor_name: user?.profile?.shop_name || user?.profile?.name,
-        city: user?.profile?.city,
+        vendor_name: user.shop_name || user.name,
+        city: user.city,
       })
       toast('Material added!','success')
       setShowModal(false); setForm(INIT); load()
-    } catch (e: any) { toast(e.response?.data?.detail||'Failed','error') } finally { setSaving(false) }
+    } catch (e: any) { toast(e.message || 'Failed','error') } finally { setSaving(false) }
   }
 
   const handleDelete = async (id: string) => {
     if (!confirm('Delete this material?')) return
     setDeleting(id)
     try {
-      await deleteMaterial(id, user!._id)
+      await deleteMaterial(id)
       toast('Deleted','success')
-      setMats(p => p.filter(m => m._id !== id))
+      setMats(p => p.filter(m => m.id !== id))
     } catch { toast('Failed to delete','error') } finally { setDeleting(null) }
   }
 
@@ -73,7 +75,7 @@ export default function VendorMaterials() {
       ) : (
         <div style={{display:'flex',flexDirection:'column',gap:12}}>
           {mats.map(m => (
-            <div key={m._id} className="card" style={{display:'flex',alignItems:'center',gap:14}}>
+            <div key={m.id} className="card" style={{display:'flex',alignItems:'center',gap:14}}>
               <div style={{width:56,height:56,borderRadius:16,background:'rgba(194,65,12,0.12)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:26,flexShrink:0}}>
                 {CAT_ICONS[m.category]||'📦'}
               </div>
@@ -85,10 +87,10 @@ export default function VendorMaterials() {
               <div style={{textAlign:'right',marginRight:8}}>
                 <div style={{fontWeight:800,fontSize:18,color:'#F97316'}}>₹{m.price}</div>
                 <div style={{fontSize:12,color:'var(--text-muted)'}}>/{m.unit||'unit'}</div>
-                <span className={`badge ${m.in_stock!==false ? 'badge-green':'badge-red'}`} style={{marginTop:4,display:'inline-block'}}>{m.in_stock!==false?'In Stock':'Out'}</span>
+                <span className={`badge ${m.in_stock ? 'badge-green':'badge-red'}`} style={{marginTop:4,display:'inline-block'}}>{m.in_stock?'In Stock':'Out'}</span>
               </div>
-              <button className="btn btn-danger btn-sm" onClick={() => handleDelete(m._id)} disabled={deleting===m._id}>
-                {deleting===m._id ? '...' : '🗑️'}
+              <button className="btn btn-danger btn-sm" onClick={() => handleDelete(m.id)} disabled={deleting===m.id}>
+                {deleting===m.id ? '...' : 'Delete'}
               </button>
             </div>
           ))}

@@ -1,34 +1,34 @@
 import { useState } from 'react'
 import { useAuth } from '../../store/auth'
 import { useToast } from '../../components/Toast'
-import { updateVendorProfile } from '../../api/api'
+import { updateVendorProfile } from '../../api/supabaseApi'
 
 const CITIES = ['Mumbai','Delhi','Bangalore','Hyderabad','Chennai','Kolkata','Pune','Ahmedabad','Jaipur','Lucknow']
 
 export default function VendorProfile() {
   const { user, updateUser } = useAuth()
   const { toast } = useToast()
-  const p = user?.profile || {}
-  const [shopName, setShopName] = useState((p as any).shop_name || '')
-  const [ownerName, setOwnerName] = useState((p as any).owner_name || '')
-  const [city, setCity] = useState((p as any).city || '')
-  const [address, setAddress] = useState((p as any).address || '')
-  const [gst, setGst] = useState((p as any).gst_number || '')
+  const [shopName, setShopName] = useState(user?.shop_name || '')
+  const [ownerName, setOwnerName] = useState(user?.owner_name || '')
+  const [city, setCity] = useState(user?.city || '')
+  const [address, setAddress] = useState(user?.address || '')
+  const [gst, setGst] = useState(user?.gst_number || '')
   const [saving, setSaving] = useState(false)
 
   const save = async () => {
+    if (!user) return
     if (!shopName || !ownerName || !city || !address) return toast('Fill all required fields','error')
     setSaving(true)
     try {
-      const res = await updateVendorProfile(user!._id, { shop_name: shopName, owner_name: ownerName, city, address, gst_number: gst })
-      updateUser(res.data)
+      const updated = await updateVendorProfile(user.id, { shop_name: shopName, owner_name: ownerName, city, address, gst_number: gst })
+      updateUser(updated)
       toast('Profile updated!','success')
     } catch { toast('Failed to save','error') } finally { setSaving(false) }
   }
 
   return (
     <div style={{maxWidth:600}}>
-      <h1 style={{fontSize:28,fontWeight:900,marginBottom:24}}>🏪 Shop Profile</h1>
+      <h1 style={{fontSize:28,fontWeight:900,marginBottom:24}}>Shop Profile</h1>
       <div className="card" style={{marginBottom:20}}>
         <div style={{display:'flex',gap:16,alignItems:'center',marginBottom:20}}>
           <div style={{width:64,height:64,borderRadius:20,background:'linear-gradient(135deg,#C2410C,#9A3412)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:30}}>🏪</div>
@@ -60,14 +60,14 @@ export default function VendorProfile() {
           <label className="form-label">GST Number</label>
           <input className="form-input" value={gst} onChange={e => setGst(e.target.value)} placeholder="GSTIN (optional)" />
         </div>
-        <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : '💾 Save Profile'}</button>
+        <button className="btn btn-primary" onClick={save} disabled={saving}>{saving ? 'Saving...' : 'Save Profile'}</button>
       </div>
       <div className="card" style={{background:'rgba(194,65,12,0.06)'}}>
         <div style={{fontWeight:700,marginBottom:8}}>Account Info</div>
         <div style={{fontSize:14,color:'var(--text-muted)',lineHeight:2}}>
           <div>📞 {user?.contact}</div>
           <div>🔖 Role: Material Vendor</div>
-          <div>🆔 ID: {user?._id}</div>
+          <div>🆔 ID: {user?.id}</div>
         </div>
       </div>
     </div>

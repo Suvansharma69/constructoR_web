@@ -4,7 +4,7 @@ import { AuthProvider, useAuth } from './store/auth'
 import { ToastProvider } from './components/Toast'
 import Layout from './components/Layout'
 
-// Lazy-load all pages — reduces initial bundle from 566KB to ~80KB
+// Lazy-load all pages
 const Login = lazy(() => import('./pages/Login'))
 const ProfileSetup = lazy(() => import('./pages/ProfileSetup'))
 
@@ -31,7 +31,6 @@ const VendorProfile = lazy(() => import('./pages/vendor/Profile'))
 // Chat
 const Chat = lazy(() => import('./pages/Chat'))
 
-// Page-level loading fallback
 function PageLoader() {
   return (
     <div style={{ minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
