@@ -1,3 +1,4 @@
+import './env.js' // ← MUST be first: loads .env before any module reads process.env
 import express from 'express'
 import { createServer } from 'http'
 import { Server as SocketIOServer } from 'socket.io'
@@ -5,7 +6,6 @@ import cors from 'cors'
 import helmet from 'helmet'
 import mongoSanitize from 'mongo-sanitize'
 import rateLimit from 'express-rate-limit'
-import dotenv from 'dotenv'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import { connectDB } from './config/db.js'
@@ -19,8 +19,6 @@ import projectsRoutes from './routes/projects.js'
 import materialsRoutes from './routes/materials.js'
 import ordersRoutes from './routes/orders.js'
 import messagesRoutes from './routes/messages.js'
-
-dotenv.config()
 
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)

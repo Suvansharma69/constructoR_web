@@ -7,35 +7,37 @@ interface NavItem { label: string; icon: string; to: string }
 
 function getNavItems(role: string): NavItem[] {
   if (role === 'homeowner') return [
-    { label: 'Build / Renovate', icon: '🏗️', to: '/homeowner/build' },
-    { label: 'Architects', icon: '📐', to: '/homeowner/architects' },
-    { label: 'Contractors', icon: '🔨', to: '/homeowner/contractors' },
-    { label: 'Interior Designers', icon: '🎨', to: '/homeowner/designers' },
-    { label: 'Materials', icon: '🧱', to: '/homeowner/materials' },
-    { label: 'My Projects', icon: '📋', to: '/homeowner/projects' },
-    { label: 'My Orders', icon: '📦', to: '/homeowner/orders' },
-    { label: 'Chat', icon: '💬', to: '/chat' },
+    { label: 'Build / Renovate',    icon: '◈', to: '/homeowner/build' },
+    { label: 'Architects',          icon: '◈', to: '/homeowner/architects' },
+    { label: 'Contractors',         icon: '◈', to: '/homeowner/contractors' },
+    { label: 'Interior Designers',  icon: '◈', to: '/homeowner/designers' },
+    { label: 'Materials',           icon: '◈', to: '/homeowner/materials' },
+    { label: 'My Projects',         icon: '◈', to: '/homeowner/projects' },
+    { label: 'My Orders',           icon: '◈', to: '/homeowner/orders' },
+    { label: 'Messages',            icon: '◈', to: '/chat' },
   ]
   if (role === 'vendor') return [
-    { label: 'Dashboard', icon: '📊', to: '/vendor/dashboard' },
-    { label: 'My Materials', icon: '🧱', to: '/vendor/materials' },
-    { label: 'Orders', icon: '📦', to: '/vendor/orders' },
-    { label: 'Profile', icon: '👤', to: '/vendor/profile' },
-    { label: 'Chat', icon: '💬', to: '/chat' },
+    { label: 'Dashboard',   icon: '◈', to: '/vendor/dashboard' },
+    { label: 'Products',    icon: '◈', to: '/vendor/materials' },
+    { label: 'Orders',      icon: '◈', to: '/vendor/orders' },
+    { label: 'Profile',     icon: '◈', to: '/vendor/profile' },
+    { label: 'Messages',    icon: '◈', to: '/chat' },
   ]
-  // professional
+  // professionals
   return [
-    { label: 'Dashboard', icon: '📊', to: '/professional/dashboard' },
-    { label: 'Browse Projects', icon: '🔍', to: '/professional/projects' },
-    { label: 'Profile', icon: '👤', to: '/professional/profile' },
-    { label: 'Chat', icon: '💬', to: '/chat' },
+    { label: 'Dashboard',        icon: '◈', to: '/professional/dashboard' },
+    { label: 'Browse Projects',  icon: '◈', to: '/professional/projects' },
+    { label: 'Profile',          icon: '◈', to: '/professional/profile' },
+    { label: 'Messages',         icon: '◈', to: '/chat' },
   ]
 }
 
 function getRoleLabel(role: string) {
   const map: Record<string, string> = {
-    homeowner: 'Homeowner', architect: 'Architect',
-    contractor: 'Contractor', interior_designer: 'Interior Designer',
+    homeowner: 'Homeowner',
+    architect: 'Architect',
+    contractor: 'Contractor',
+    interior_designer: 'Interior Designer',
     vendor: 'Material Vendor',
   }
   return map[role] || role
@@ -54,26 +56,25 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       try {
         const res = await getUnreadCount(user._id)
         setUnread(res.data.count || 0)
-      } catch {}
+      } catch { /* silent */ }
     }
     fetchUnread()
     const interval = setInterval(fetchUnread, 15000)
     return () => clearInterval(interval)
   }, [user])
 
-  const handleLogout = () => {
-    logout()
-    navigate('/login')
-  }
+  const handleLogout = () => { logout(); navigate('/login') }
 
   if (!user) return null
+
   const navItems = getNavItems(user.role)
   const displayName = user.profile?.name || user.profile?.shop_name || user.contact
   const initials = (displayName || 'U').charAt(0).toUpperCase()
+  const activeLabel = navItems.find(n => location.pathname.startsWith(n.to))?.label || 'constructoR'
 
   return (
     <div className="app-layout">
-      {/* Overlay */}
+      {/* Mobile overlay */}
       <div
         className={`sidebar-overlay ${sidebarOpen ? 'visible' : ''}`}
         onClick={() => setSidebarOpen(false)}
@@ -82,8 +83,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {/* Sidebar */}
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
         <div className="sidebar-logo">
-          🏗️ BuildEase
-          <span>{getRoleLabel(user.role)}</span>
+          <div className="sidebar-logo-mark">
+            <div className="sidebar-logo-icon">⬡</div>
+            constructoR
+          </div>
+          <div className="sidebar-logo-role">{getRoleLabel(user.role)}</div>
         </div>
 
         <nav className="sidebar-nav">
@@ -94,10 +98,10 @@ export default function Layout({ children }: { children: React.ReactNode }) {
               className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`}
               onClick={() => setSidebarOpen(false)}
             >
-              <span className="nav-icon">{item.icon}</span>
+              <span className="nav-icon" aria-hidden="true">◆</span>
               {item.label}
-              {item.label === 'Chat' && unread > 0 && (
-                <span className="badge">{unread}</span>
+              {item.label === 'Messages' && unread > 0 && (
+                <span className="nav-badge">{unread > 9 ? '9+' : unread}</span>
               )}
             </NavLink>
           ))}
@@ -112,7 +116,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             </div>
           </div>
           <button className="logout-btn" onClick={handleLogout}>
-            🚪 Sign Out
+            Sign out
           </button>
         </div>
       </aside>
@@ -120,14 +124,25 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       {/* Main */}
       <div className="main-content">
         <header className="topbar">
-          <button className="hamburger" onClick={() => setSidebarOpen(true)}>☰</button>
-          <span className="topbar-title">
-            {navItems.find(n => location.pathname.startsWith(n.to))?.label || 'BuildEase'}
-          </span>
-          <div className="user-avatar" style={{ cursor: 'pointer' }} onClick={() => navigate('/profile')}>
+          <div className="topbar-left">
+            <button className="hamburger" onClick={() => setSidebarOpen(true)} aria-label="Open menu">
+              ☰
+            </button>
+            <div>
+              <div className="topbar-breadcrumb">constructoR</div>
+              <div className="topbar-title">{activeLabel}</div>
+            </div>
+          </div>
+          <div
+            className="user-avatar"
+            style={{ cursor: 'pointer' }}
+            onClick={() => navigate('/profile')}
+            title={displayName}
+          >
             {initials}
           </div>
         </header>
+
         <div className="page">
           {children}
         </div>

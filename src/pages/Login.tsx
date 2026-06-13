@@ -5,11 +5,11 @@ import { useToast } from '../components/Toast'
 import { sendOTP, verifyOTP } from '../api/api'
 
 const ROLES = [
-  { id: 'homeowner', emoji: '🏠', name: 'Home Owner', desc: 'Build or renovate your home' },
-  { id: 'architect', emoji: '📐', name: 'Architect', desc: 'Design and plan projects' },
-  { id: 'contractor', emoji: '🔨', name: 'Contractor', desc: 'Execute construction work' },
-  { id: 'interior_designer', emoji: '🎨', name: 'Interior Designer', desc: 'Design beautiful interiors' },
-  { id: 'vendor', emoji: '🏪', name: 'Material Vendor', desc: 'Sell construction materials' },
+  { id: 'homeowner',         name: 'Home Owner',       desc: 'Build or renovate your home' },
+  { id: 'architect',         name: 'Architect',         desc: 'Design and plan projects' },
+  { id: 'contractor',        name: 'Contractor',        desc: 'Execute construction work' },
+  { id: 'interior_designer', name: 'Interior Designer', desc: 'Design beautiful interiors' },
+  { id: 'vendor',            name: 'Material Vendor',   desc: 'Sell construction materials' },
 ]
 
 type Step = 'contact' | 'role' | 'otp'
@@ -35,11 +35,11 @@ export default function Login() {
     if (!role) return toast('Please select your role', 'error')
     setLoading(true)
     try {
-      const res = await sendOTP(contact, contactType)
-      toast(`OTP sent! (Mock OTP: ${res.data.mock_otp})`, 'success')
+      await sendOTP(contact, contactType)
+      toast('OTP sent successfully', 'success')
       setStep('otp')
     } catch (e: any) {
-      toast(e.response?.data?.detail || 'Failed to send OTP', 'error')
+      toast(e.response?.data?.detail || 'Failed to send OTP. Check your connection.', 'error')
     } finally { setLoading(false) }
   }
 
@@ -49,114 +49,200 @@ export default function Login() {
     try {
       const res = await verifyOTP(contact, otp, role)
       login(res.data.user, res.data.token)
+      const r = res.data.user.role
       if (!res.data.user.profile_completed) navigate('/profile-setup')
-      else {
-        const r = res.data.user.role
-        if (r === 'homeowner') navigate('/homeowner/build')
-        else if (r === 'vendor') navigate('/vendor/dashboard')
-        else navigate('/professional/dashboard')
-      }
+      else if (r === 'homeowner') navigate('/homeowner/build')
+      else if (r === 'vendor') navigate('/vendor/dashboard')
+      else navigate('/professional/dashboard')
     } catch (e: any) {
-      toast(e.response?.data?.detail || 'Invalid OTP', 'error')
+      toast(e.response?.data?.detail || 'Invalid or expired OTP', 'error')
     } finally { setLoading(false) }
   }
 
   return (
     <div className="auth-page">
-      <div className="auth-orb auth-orb-1" />
-      <div className="auth-orb auth-orb-2" />
-      <div className="auth-card">
-        <div className="auth-logo">
-          <div className="auth-logo-title">🏗️ BuildEase</div>
-          <div className="auth-logo-sub">Your Complete Construction Platform</div>
+      {/* Left — Brand panel */}
+      <div className="auth-brand">
+        <div className="auth-brand-logo">
+          <div className="auth-brand-icon">⬡</div>
+          constructoR
         </div>
 
-        {(step === 'contact' || step === 'role') && (
-          <>
-            {step === 'contact' && (
-              <>
-                <div className="auth-step-title">Get Started</div>
-                <div className="auth-step-sub">Enter your contact details</div>
-                <div className="toggle-group">
-                  <button className={`toggle-btn ${contactType === 'phone' ? 'active' : ''}`} onClick={() => setContactType('phone')}>
-                    📞 Phone
-                  </button>
-                  <button className={`toggle-btn ${contactType === 'email' ? 'active' : ''}`} onClick={() => setContactType('email')}>
-                    ✉️ Email
-                  </button>
-                </div>
-                <div className="form-group">
-                  <label className="form-label">{contactType === 'phone' ? 'Mobile Number' : 'Email Address'}</label>
-                  <input
-                    className="form-input"
-                    placeholder={contactType === 'phone' ? '10-digit number' : 'you@example.com'}
-                    value={contact}
-                    onChange={e => setContact(e.target.value)}
-                    type={contactType === 'email' ? 'email' : 'tel'}
-                    maxLength={contactType === 'phone' ? 10 : undefined}
-                    onKeyDown={e => e.key === 'Enter' && setStep('role')}
-                  />
-                </div>
-                <button className="btn btn-primary btn-full" onClick={() => {
+        <div className="auth-brand-center">
+          <div className="auth-brand-headline">
+            The platform<br />for modern<br /><span>construction</span>
+          </div>
+          <div className="auth-brand-sub">
+            Connect homeowners with trusted architects, contractors,
+            interior designers, and material vendors — all in one place.
+          </div>
+          <div className="auth-brand-features">
+            {[
+              'Post projects and receive competitive bids',
+              'Browse verified professionals by city',
+              'Order construction materials directly',
+              'Real-time messaging with all parties',
+            ].map(f => (
+              <div key={f} className="auth-feature">
+                <div className="auth-feature-dot" />
+                {f}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="auth-brand-footer">
+          constructoR — Professional Construction Platform
+        </div>
+      </div>
+
+      {/* Right — Form panel */}
+      <div className="auth-form-panel">
+        <div className="auth-card">
+
+          {/* Step: Contact */}
+          {step === 'contact' && (
+            <>
+              <span className="auth-step-tag">Step 1 of 3</span>
+              <div className="auth-step-title">Get started</div>
+              <div className="auth-step-sub">Enter your phone number or email address</div>
+
+              <div className="toggle-group" style={{ marginBottom: 14 }}>
+                <button
+                  className={`toggle-btn ${contactType === 'phone' ? 'active' : ''}`}
+                  onClick={() => setContactType('phone')}
+                >
+                  Phone
+                </button>
+                <button
+                  className={`toggle-btn ${contactType === 'email' ? 'active' : ''}`}
+                  onClick={() => setContactType('email')}
+                >
+                  Email
+                </button>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">
+                  {contactType === 'phone' ? 'Mobile number' : 'Email address'}
+                </label>
+                <input
+                  id="contact-input"
+                  className="form-input"
+                  placeholder={contactType === 'phone' ? '10-digit number' : 'you@example.com'}
+                  value={contact}
+                  onChange={e => setContact(e.target.value)}
+                  type={contactType === 'email' ? 'email' : 'tel'}
+                  maxLength={contactType === 'phone' ? 10 : undefined}
+                  autoComplete="on"
+                  onKeyDown={e => e.key === 'Enter' && setStep('role')}
+                />
+              </div>
+
+              <button
+                id="continue-btn"
+                className="btn btn-primary btn-full btn-lg"
+                onClick={() => {
                   if (!contact.trim()) { toast('Please enter contact', 'error'); return }
                   setStep('role')
-                }}>
-                  Continue →
-                </button>
-              </>
-            )}
+                }}
+              >
+                Continue
+              </button>
+            </>
+          )}
 
-            {step === 'role' && (
-              <>
-                <div className="auth-step-title">Who are you?</div>
-                <div className="auth-step-sub">Select your role to continue</div>
-                <div className="roles-grid">
-                  {ROLES.map(r => (
-                    <button key={r.id} className={`role-btn ${role === r.id ? 'selected' : ''}`} onClick={() => setRole(r.id)}>
-                      <span className="role-emoji">{r.emoji}</span>
-                      <span className="role-name">{r.name}</span>
-                      <span className="role-desc">{r.desc}</span>
-                    </button>
-                  ))}
-                </div>
-                <button className="btn btn-primary btn-full" onClick={handleSendOTP} disabled={!role || loading}>
-                  {loading ? 'Sending...' : 'Send OTP'}
-                </button>
-                <button className="btn btn-outline btn-full" style={{marginTop: 10}} onClick={() => setStep('contact')}>
-                  ← Back
-                </button>
-              </>
-            )}
-          </>
-        )}
+          {/* Step: Role */}
+          {step === 'role' && (
+            <>
+              <span className="auth-step-tag">Step 2 of 3</span>
+              <div className="auth-step-title">Select your role</div>
+              <div className="auth-step-sub">How will you be using constructoR?</div>
 
-        {step === 'otp' && (
-          <>
-            <div className="auth-step-title">Verify OTP</div>
-            <div className="auth-step-sub">Sent to {contact}</div>
-            <div className="form-group">
-              <label className="form-label">6-digit OTP</label>
-              <input
-                className="form-input"
-                placeholder="Enter OTP (123456 for testing)"
-                value={otp}
-                onChange={e => setOtp(e.target.value)}
-                type="number"
-                maxLength={6}
-                onKeyDown={e => e.key === 'Enter' && handleVerifyOTP()}
-              />
-            </div>
-            <button className="btn btn-primary btn-full" onClick={handleVerifyOTP} disabled={loading}>
-              {loading ? 'Verifying...' : 'Verify & Continue →'}
-            </button>
-            <button className="btn btn-outline btn-full" style={{marginTop: 10}} onClick={handleSendOTP} disabled={loading}>
-              Resend OTP
-            </button>
-            <button className="btn btn-outline btn-full" style={{marginTop: 10}} onClick={() => setStep('role')}>
-              ← Back
-            </button>
-          </>
-        )}
+              <div className="roles-grid" style={{ marginBottom: 16 }}>
+                {ROLES.map(r => (
+                  <button
+                    key={r.id}
+                    id={`role-${r.id}`}
+                    className={`role-btn ${role === r.id ? 'selected' : ''}`}
+                    onClick={() => setRole(r.id)}
+                  >
+                    <div className="role-name">{r.name}</div>
+                    <div className="role-desc">{r.desc}</div>
+                  </button>
+                ))}
+              </div>
+
+              <button
+                id="send-otp-btn"
+                className="btn btn-primary btn-full btn-lg"
+                onClick={handleSendOTP}
+                disabled={!role || loading}
+              >
+                {loading ? 'Sending OTP…' : 'Send OTP'}
+              </button>
+              <button
+                className="btn btn-outline btn-full"
+                style={{ marginTop: 8 }}
+                onClick={() => setStep('contact')}
+              >
+                Back
+              </button>
+            </>
+          )}
+
+          {/* Step: OTP */}
+          {step === 'otp' && (
+            <>
+              <span className="auth-step-tag">Step 3 of 3</span>
+              <div className="auth-step-title">Verify OTP</div>
+              <div className="auth-step-sub">
+                Sent to <strong style={{ color: 'var(--text)' }}>{contact}</strong>
+              </div>
+
+              <div className="form-group">
+                <label className="form-label">6-digit OTP</label>
+                <input
+                  id="otp-input"
+                  className="form-input"
+                  placeholder="Enter the 6-digit code"
+                  value={otp}
+                  onChange={e => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                  type="text"
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  maxLength={6}
+                  onKeyDown={e => e.key === 'Enter' && handleVerifyOTP()}
+                  style={{ letterSpacing: '0.3em', fontSize: 18 }}
+                />
+              </div>
+
+              <button
+                id="verify-btn"
+                className="btn btn-primary btn-full btn-lg"
+                onClick={handleVerifyOTP}
+                disabled={loading || otp.length !== 6}
+              >
+                {loading ? 'Verifying…' : 'Verify & Continue'}
+              </button>
+              <button
+                className="btn btn-ghost btn-full"
+                style={{ marginTop: 8 }}
+                onClick={handleSendOTP}
+                disabled={loading}
+              >
+                Resend OTP
+              </button>
+              <button
+                className="btn btn-outline btn-full"
+                style={{ marginTop: 8 }}
+                onClick={() => setStep('role')}
+              >
+                Back
+              </button>
+            </>
+          )}
+        </div>
       </div>
     </div>
   )
