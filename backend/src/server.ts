@@ -11,6 +11,7 @@ import path from 'path'
 import crypto from 'crypto'
 import { fileURLToPath } from 'url'
 import { connectDB } from './config/db.js'
+import { connectRedis } from './config/redis.js'
 import { verifyToken, blacklistToken } from './utils/jwt.js'
 
 // Routes
@@ -128,13 +129,14 @@ app.use((req, _res, next) => {
   next()
 })
 
-// ─── Static files ─────────────────────────────────────────────────────────────
-app.use('/uploads', express.static(path.join(__dirname, '../uploads'), {
-  // Prevent path traversal
-  dotfiles: 'deny',
-  etag: true,
-  maxAge: '7d',
-}))
+// ─── Static files (dev only — prod uses Cloudinary CDN) ──────────────────────
+if (process.env.NODE_ENV !== 'production') {
+  app.use('/uploads', express.static(path.join(__dirname, '../uploads'), {
+    dotfiles: 'deny',
+    etag: true,
+    maxAge: '7d',
+  }))
+}
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => {
@@ -142,11 +144,11 @@ app.get('/api/health', (_req, res) => {
 })
 
 // ─── Logout endpoint (token blacklisting) ────────────────────────────────────
-app.post('/api/auth/logout', (req, res) => {
+app.post('/api/auth/logout', async (req, res) => {
   const authHeader = req.headers.authorization
   if (authHeader?.startsWith('Bearer ')) {
     const token = authHeader.substring(7)
-    blacklistToken(token)
+    await blacklistToken(token)
   }
   res.json({ message: 'Logged out successfully' })
 })
@@ -164,10 +166,10 @@ app.use('/api/messages', generalLimiter, messagesRoutes)
 // ─── Socket.IO Auth + Events ──────────────────────────────────────────────────
 const connectedUsers = new Map<string, string>()
 
-io.use((socket, next) => {
+io.use(async (socket, next) => {
   const token = socket.handshake.auth?.token as string | undefined
   if (!token) return next(new Error('Authentication required'))
-  const decoded = verifyToken(token)
+  const decoded = await verifyToken(token)
   if (!decoded) return next(new Error('Invalid token'))
   ;(socket as any).userId = decoded.userId
   next()
@@ -215,9 +217,10 @@ app.use((err: any, req: express.Request, res: express.Response, _next: express.N
 const startServer = async () => {
   try {
     await connectDB()
+    await connectRedis()
     httpServer.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`)
-      console.log(`🔒 Security: Helmet, HPP, Rate limiting, NoSQL sanitization, JWT blacklisting enabled`)
+      console.log(`🔒 Security: Helmet, HPP, Rate limiting, NoSQL sanitization, JWT blacklisting (Redis) enabled`)
     })
   } catch (error) {
     console.error('Failed to start server:', error)

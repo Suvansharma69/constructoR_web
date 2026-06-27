@@ -117,7 +117,7 @@ router.post('/send-otp', otpLimiter, [
       return res.status(400).json({ detail: 'Invalid email address' }) as any
 
     const otp = generateOTP()
-    storeOTP(trimmed, otp)
+    await storeOTP(trimmed, otp)
     if (process.env.NODE_ENV !== 'production') console.log(`📱 DEV OTP for ${trimmed}: ${otp}`)
 
     res.json({ message: 'OTP sent successfully',
@@ -140,7 +140,7 @@ router.post('/verify-otp', [
   try {
     const { contact, otp, role } = req.body
     const trimmed = contact.trim()
-    if (!verifyOTPUtil(trimmed, otp)) return res.status(400).json({ detail: 'Invalid or expired OTP' }) as any
+    if (!await verifyOTPUtil(trimmed, otp)) return res.status(400).json({ detail: 'Invalid or expired OTP' }) as any
 
     let user = await User.findOne({ contact: trimmed })
     if (!user) {

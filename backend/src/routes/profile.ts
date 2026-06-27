@@ -1,6 +1,6 @@
 import express from 'express'
 import User from '../models/User.js'
-import { uploadSingle, uploadMultiple } from '../middleware/upload.js'
+import { uploadSingle, uploadPortfolio, getFileUrl } from '../middleware/upload.js'
 import { AuthRequest, authenticate } from '../middleware/auth.js'
 
 const router = express.Router()
@@ -147,7 +147,7 @@ router.post('/upload-avatar/:id', authenticate, uploadSingle, async (req: AuthRe
       return res.status(404).json({ detail: 'User not found' })
     }
 
-    const avatarUrl = `/uploads/profiles/${req.file.filename}`
+    const avatarUrl = getFileUrl(req.file, 'profiles')
     user.profile = { ...user.profile, avatar: avatarUrl }
     await user.save()
 
@@ -159,7 +159,7 @@ router.post('/upload-avatar/:id', authenticate, uploadSingle, async (req: AuthRe
 })
 
 // Upload portfolio images
-router.post('/upload-portfolio/:id', authenticate, uploadMultiple, async (req: AuthRequest, res) => {
+router.post('/upload-portfolio/:id', authenticate, uploadPortfolio, async (req: AuthRequest, res) => {
   try {
     if (req.userId !== req.params.id) {
       return res.status(403).json({ detail: 'Forbidden' })
@@ -174,7 +174,7 @@ router.post('/upload-portfolio/:id', authenticate, uploadMultiple, async (req: A
       return res.status(404).json({ detail: 'User not found' })
     }
 
-    const portfolioUrls = req.files.map(file => `/uploads/portfolios/${file.filename}`)
+    const portfolioUrls = (req.files as Express.Multer.File[]).map(file => getFileUrl(file, 'portfolios'))
     user.profile = {
       ...user.profile,
       portfolio_images: [...(user.profile?.portfolio_images || []), ...portfolioUrls],

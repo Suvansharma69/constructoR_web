@@ -1,61 +1,54 @@
-// Simple OTP storage (in production, use Redis or MongoDB with TTL)
+import { getRedis } from '../config/redis.js'
+
+const OTP_PREFIX = 'otp:'
+const OTP_TTL_SECONDS = 10 * 60 // 10 minutes
+const MAX_ATTEMPTS = 5
+
 interface OTPEntry {
   otp: string
-  expires: number
-  attempts: number // brute-force protection
+  attempts: number
 }
-
-interface OTPStore {
-  [contact: string]: OTPEntry
-}
-
-const MAX_ATTEMPTS = 5
-const otpStore: OTPStore = {}
 
 export const generateOTP = (): string => {
   return Math.floor(100000 + Math.random() * 900000).toString()
 }
 
-export const storeOTP = (contact: string, otp: string): void => {
-  otpStore[contact] = {
-    otp,
-    expires: Date.now() + 10 * 60 * 1000, // 10 minutes
-    attempts: 0,
-  }
+export const storeOTP = async (contact: string, otp: string): Promise<void> => {
+  const entry: OTPEntry = { otp, attempts: 0 }
+  await getRedis().set(
+    `${OTP_PREFIX}${contact}`,
+    JSON.stringify(entry),
+    'EX',
+    OTP_TTL_SECONDS
+  )
 }
 
-export const verifyOTP = (contact: string, otp: string): boolean => {
-  const stored = otpStore[contact]
-  if (!stored) return false
+export const verifyOTP = async (contact: string, otp: string): Promise<boolean> => {
+  const redis = getRedis()
+  const key = `${OTP_PREFIX}${contact}`
 
-  // Expired
-  if (Date.now() > stored.expires) {
-    delete otpStore[contact]
-    return false
-  }
+  const raw = await redis.get(key)
+  if (!raw) return false // expired or never sent
 
-  // Brute-force lockout: too many wrong attempts
+  const stored: OTPEntry = JSON.parse(raw)
+
+  // Brute-force lockout
   if (stored.attempts >= MAX_ATTEMPTS) {
-    delete otpStore[contact]
+    await redis.del(key) // invalidate after too many attempts
     return false
   }
 
   if (stored.otp === otp) {
-    delete otpStore[contact] // single-use
+    await redis.del(key) // single-use: delete on success
     return true
   }
 
-  // Wrong guess — increment attempt counter
+  // Wrong guess — increment attempt counter and re-save with original TTL
   stored.attempts += 1
+  const remainingTtl = await redis.ttl(key)
+  if (remainingTtl > 0) {
+    await redis.set(key, JSON.stringify(stored), 'EX', remainingTtl)
+  }
+
   return false
 }
-
-// Cleanup expired OTPs every 5 minutes
-setInterval(() => {
-  const now = Date.now()
-  for (const contact in otpStore) {
-    if (otpStore[contact].expires < now) {
-      delete otpStore[contact]
-    }
-  }
-}, 5 * 60 * 1000)
