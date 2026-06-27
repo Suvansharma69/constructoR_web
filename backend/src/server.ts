@@ -6,10 +6,12 @@ import cors from 'cors'
 import helmet from 'helmet'
 import mongoSanitize from 'mongo-sanitize'
 import rateLimit from 'express-rate-limit'
+import hpp from 'hpp'
 import path from 'path'
+import crypto from 'crypto'
 import { fileURLToPath } from 'url'
 import { connectDB } from './config/db.js'
-import { verifyToken } from './utils/jwt.js'
+import { verifyToken, blacklistToken } from './utils/jwt.js'
 
 // Routes
 import authRoutes from './routes/auth.js'
@@ -43,18 +45,17 @@ const corsOptions = {
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Request-ID'],
 }
 
-// ─── Security: Helmet (HTTP headers) ─────────────────────────────────────────
-// Adds: X-Frame-Options, X-Content-Type-Options, HSTS, X-XSS-Protection, etc.
+// ─── Security: Helmet ─────────────────────────────────────────────────────────
 app.use(helmet({
-  crossOriginResourcePolicy: { policy: 'cross-origin' }, // allow image serving
-  contentSecurityPolicy: false, // handled by Cloudflare
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: false, // handled by Cloudflare / meta tag
+  referrerPolicy: { policy: 'strict-origin-when-cross-origin' },
 }))
 
 // ─── Rate Limiters ────────────────────────────────────────────────────────────
-// Auth endpoints: 10 requests per 15 minutes per IP
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   max: 10,
@@ -63,7 +64,6 @@ const authLimiter = rateLimit({
   legacyHeaders: false,
 })
 
-// OTP endpoint: 5 requests per 10 minutes (prevent SMS spam)
 const otpLimiter = rateLimit({
   windowMs: 10 * 60 * 1000,
   max: 5,
@@ -72,7 +72,6 @@ const otpLimiter = rateLimit({
   legacyHeaders: false,
 })
 
-// General API: 200 requests per minute per IP
 const generalLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 200,
@@ -88,7 +87,6 @@ const io = new SocketIOServer(httpServer, {
     methods: ['GET', 'POST'],
     credentials: true,
   },
-  // Limit payload size on socket messages
   maxHttpBufferSize: 1e5, // 100KB max socket message
 })
 
@@ -98,30 +96,64 @@ const PORT = process.env.PORT || 8000
 app.use(cors(corsOptions))
 app.options('*', cors(corsOptions))
 
-// Body size limits — prevent DoS via huge payloads
+// Body size limits
 app.use(express.json({ limit: '1mb' }))
 app.use(express.urlencoded({ extended: true, limit: '1mb' }))
 
-// ─── NoSQL Injection Prevention ───────────────────────────────────────────────
-// Strips MongoDB operators ($, .) from request body/query to prevent injection
+// ─── Request ID (audit trail) ─────────────────────────────────────────────────
+app.use((req, res, next) => {
+  const requestId = (req.headers['x-request-id'] as string) || crypto.randomUUID()
+  req.headers['x-request-id'] = requestId
+  res.setHeader('X-Request-ID', requestId)
+  next()
+})
+
+// ─── Structured Request Logging ───────────────────────────────────────────────
 app.use((req, _res, next) => {
-  req.body = mongoSanitize(req.body)
-  req.query = mongoSanitize(req.query) as any
+  const isProd = process.env.NODE_ENV === 'production'
+  if (!isProd) {
+    console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} — rid:${req.headers['x-request-id']}`)
+  }
+  next()
+})
+
+// ─── HTTP Parameter Pollution Prevention ──────────────────────────────────────
+app.use(hpp())
+
+// ─── NoSQL Injection Prevention ───────────────────────────────────────────────
+app.use((req, _res, next) => {
+  req.body   = mongoSanitize(req.body)
+  req.query  = mongoSanitize(req.query) as any
   req.params = mongoSanitize(req.params)
   next()
 })
 
 // ─── Static files ─────────────────────────────────────────────────────────────
-app.use('/uploads', express.static(path.join(__dirname, '../uploads')))
+app.use('/uploads', express.static(path.join(__dirname, '../uploads'), {
+  // Prevent path traversal
+  dotfiles: 'deny',
+  etag: true,
+  maxAge: '7d',
+}))
 
 // ─── Health Check ─────────────────────────────────────────────────────────────
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'BuildEase API is running' })
+app.get('/api/health', (_req, res) => {
+  res.json({ status: 'ok', message: 'constructoR API is running', ts: Date.now() })
+})
+
+// ─── Logout endpoint (token blacklisting) ────────────────────────────────────
+app.post('/api/auth/logout', (req, res) => {
+  const authHeader = req.headers.authorization
+  if (authHeader?.startsWith('Bearer ')) {
+    const token = authHeader.substring(7)
+    blacklistToken(token)
+  }
+  res.json({ message: 'Logged out successfully' })
 })
 
 // ─── API Routes ───────────────────────────────────────────────────────────────
 app.use('/api/auth', authLimiter, authRoutes)
-app.use('/api/auth/send-otp', otpLimiter) // extra limiter on OTP specifically
+// Note: otpLimiter is applied inline in the auth router for the /send-otp path
 app.use('/api/profile', generalLimiter, profileRoutes)
 app.use('/api/professionals', generalLimiter, professionalsRoutes)
 app.use('/api/projects', generalLimiter, projectsRoutes)
@@ -146,7 +178,6 @@ io.on('connection', (socket) => {
   connectedUsers.set(userId, socket.id)
 
   socket.on('receive_message', (data: { receiver_id: string; message: any }) => {
-    // Validate receiver_id is a string, not an object (NoSQL injection via socket)
     if (typeof data.receiver_id !== 'string') return
     const receiverSocketId = connectedUsers.get(data.receiver_id)
     if (receiverSocketId) {
@@ -160,15 +191,15 @@ io.on('connection', (socket) => {
 })
 
 // ─── 404 Handler ─────────────────────────────────────────────────────────────
-app.use((req, res) => {
+app.use((_req, res) => {
   res.status(404).json({ detail: 'Route not found' })
 })
 
 // ─── Global Error Handler ─────────────────────────────────────────────────────
-// Never leak internal error details in production
 app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
   const isProd = process.env.NODE_ENV === 'production'
-  console.error('Error:', err)
+  const rid = req.headers['x-request-id']
+  console.error(`[ERROR] rid:${rid}`, err.message || err)
 
   if (err.message?.startsWith('CORS blocked')) {
     return res.status(403).json({ detail: 'CORS: origin not allowed' })
@@ -176,6 +207,7 @@ app.use((err: any, req: express.Request, res: express.Response, _next: express.N
 
   res.status(err.status || 500).json({
     detail: isProd ? 'Internal server error' : (err.message || 'Internal server error'),
+    ...(isProd ? {} : { rid }),
   })
 })
 
@@ -185,7 +217,7 @@ const startServer = async () => {
     await connectDB()
     httpServer.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`)
-      console.log(`🔒 Security: Helmet, Rate limiting, NoSQL sanitization enabled`)
+      console.log(`🔒 Security: Helmet, HPP, Rate limiting, NoSQL sanitization, JWT blacklisting enabled`)
     })
   } catch (error) {
     console.error('Failed to start server:', error)

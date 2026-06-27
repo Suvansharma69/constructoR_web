@@ -1,6 +1,7 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './store/auth'
 import { ToastProvider } from './components/Toast'
+import ErrorBoundary from './components/ErrorBoundary'
 import Layout from './components/Layout'
 
 import Login from './pages/Login'
@@ -61,28 +62,28 @@ function AppRoutes() {
       } />
 
       {/* Homeowner */}
-      <Route path="/homeowner/build" element={<PrivateRoute><Build /></PrivateRoute>} />
+      <Route path="/homeowner/build"      element={<PrivateRoute><Build /></PrivateRoute>} />
       <Route path="/homeowner/architects" element={<PrivateRoute><Architects /></PrivateRoute>} />
-      <Route path="/homeowner/contractors" element={<PrivateRoute><Contractors /></PrivateRoute>} />
-      <Route path="/homeowner/designers" element={<PrivateRoute><Designers /></PrivateRoute>} />
-      <Route path="/homeowner/materials" element={<PrivateRoute><Materials /></PrivateRoute>} />
-      <Route path="/homeowner/projects" element={<PrivateRoute><HomeownerProjects /></PrivateRoute>} />
-      <Route path="/homeowner/orders" element={<PrivateRoute><HomeownerOrders /></PrivateRoute>} />
+      <Route path="/homeowner/contractors"element={<PrivateRoute><Contractors /></PrivateRoute>} />
+      <Route path="/homeowner/designers"  element={<PrivateRoute><Designers /></PrivateRoute>} />
+      <Route path="/homeowner/materials"  element={<PrivateRoute><Materials /></PrivateRoute>} />
+      <Route path="/homeowner/projects"   element={<PrivateRoute><HomeownerProjects /></PrivateRoute>} />
+      <Route path="/homeowner/orders"     element={<PrivateRoute><HomeownerOrders /></PrivateRoute>} />
 
       {/* Professional */}
       <Route path="/professional/dashboard" element={<PrivateRoute><ProfessionalDashboard /></PrivateRoute>} />
-      <Route path="/professional/projects" element={<PrivateRoute><ProfessionalProjects /></PrivateRoute>} />
-      <Route path="/professional/profile" element={<PrivateRoute><ProfessionalProfile /></PrivateRoute>} />
+      <Route path="/professional/projects"  element={<PrivateRoute><ProfessionalProjects /></PrivateRoute>} />
+      <Route path="/professional/profile"   element={<PrivateRoute><ProfessionalProfile /></PrivateRoute>} />
 
       {/* Vendor */}
       <Route path="/vendor/dashboard" element={<PrivateRoute><VendorDashboard /></PrivateRoute>} />
       <Route path="/vendor/materials" element={<PrivateRoute><VendorMaterials /></PrivateRoute>} />
-      <Route path="/vendor/orders" element={<PrivateRoute><VendorOrders /></PrivateRoute>} />
-      <Route path="/vendor/profile" element={<PrivateRoute><VendorProfile /></PrivateRoute>} />
+      <Route path="/vendor/orders"    element={<PrivateRoute><VendorOrders /></PrivateRoute>} />
+      <Route path="/vendor/profile"   element={<PrivateRoute><VendorProfile /></PrivateRoute>} />
 
       {/* Chat */}
-      <Route path="/chat" element={<PrivateRoute><Chat /></PrivateRoute>} />
-      <Route path="/chat/:userId" element={<PrivateRoute><Chat /></PrivateRoute>} />
+      <Route path="/chat"        element={<PrivateRoute><Chat /></PrivateRoute>} />
+      <Route path="/chat/:userId"element={<PrivateRoute><Chat /></PrivateRoute>} />
 
       {/* Catch-all */}
       <Route path="/" element={
@@ -97,10 +98,12 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <ToastProvider>
-        <AppRoutes />
-      </ToastProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <ToastProvider>
+          <AppRoutes />
+        </ToastProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }

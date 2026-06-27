@@ -2,43 +2,26 @@ import express from 'express'
 import Project from '../models/Project.js'
 import Bid from '../models/Bid.js'
 import { AuthRequest, authenticate } from '../middleware/auth.js'
-import { uploadDocuments } from '../middleware/upload.js'
 
 const router = express.Router()
 
 // Create project
-router.post('/', authenticate, uploadDocuments, async (req: AuthRequest, res) => {
+router.post('/', authenticate, async (req: AuthRequest, res) => {
   try {
-    const { project_type, title, description, location, budget, timeline } = req.body
+    const { project_type, city, budget_range, description, plot_size, floors } = req.body
 
-    if (!project_type || !title || !description || !location || !budget || !timeline) {
-      return res.status(400).json({ detail: 'All fields are required' })
-    }
-
-    const images: string[] = []
-    const documents: string[] = []
-
-    if (req.files && Array.isArray(req.files)) {
-      req.files.forEach(file => {
-        const fileUrl = `/uploads/projects/${file.filename}`
-        if (file.mimetype.startsWith('image/')) {
-          images.push(fileUrl)
-        } else {
-          documents.push(fileUrl)
-        }
-      })
+    if (!project_type || !city) {
+      return res.status(400).json({ detail: 'project_type and city are required' })
     }
 
     const project = new Project({
       user_id: req.userId,
       project_type,
-      title,
-      description,
-      location,
-      budget: parseFloat(budget),
-      timeline,
-      images,
-      documents,
+      city,
+      budget_range: budget_range || undefined,
+      description: description || undefined,
+      plot_size: plot_size ? parseFloat(plot_size) : undefined,
+      floors: floors ? parseInt(floors) : undefined,
     })
 
     await project.save()
@@ -63,18 +46,18 @@ router.get('/user/:id', authenticate, async (req: AuthRequest, res) => {
   }
 })
 
-// Get available projects for professionals
+// Get available projects for professionals (filtered by city optionally)
 router.get('/available/:role', authenticate, async (req: AuthRequest, res) => {
   try {
     const { role } = req.params
-    // Cast location to string and escape for safe regex use
-    const locationRaw = req.query.location
-    const location = typeof locationRaw === 'string' ? locationRaw.trim() : undefined
+    const cityRaw = req.query.city
+    const city = typeof cityRaw === 'string' ? cityRaw.trim() : undefined
 
+    // Map professional roles to the project types they can handle
     const projectTypeMap: Record<string, string[]> = {
-      architect: ['new_construction', 'renovation', 'commercial'],
-      contractor: ['new_construction', 'renovation', 'commercial'],
-      interior_designer: ['interior_design', 'renovation'],
+      architect:         ['build', 'renovate'],
+      contractor:        ['build', 'renovate'],
+      interior_designer: ['build', 'renovate'],
     }
 
     const query: any = {
@@ -82,10 +65,9 @@ router.get('/available/:role', authenticate, async (req: AuthRequest, res) => {
       project_type: { $in: projectTypeMap[role] || [] },
     }
 
-    if (location) {
-      // Escape special regex characters to prevent ReDoS
-      const escaped = location.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-      query.location = { $regex: escaped, $options: 'i' }
+    if (city) {
+      const escaped = city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      query.city = { $regex: escaped, $options: 'i' }
     }
 
     const projects = await Project.find(query)
@@ -102,10 +84,16 @@ router.get('/available/:role', authenticate, async (req: AuthRequest, res) => {
 // Submit bid on project
 router.post('/:id/bid', authenticate, async (req: AuthRequest, res) => {
   try {
-    const { proposal, estimated_cost, estimated_days } = req.body
+    // Accept both naming conventions from frontend
+    const proposal = req.body.proposal || req.body.message
+    const estimated_cost = req.body.estimated_cost || req.body.proposed_fee
+    const estimated_days = req.body.estimated_days || 30 // default to 30 days if not provided
 
-    if (!proposal || !estimated_cost || !estimated_days) {
-      return res.status(400).json({ detail: 'All fields are required' })
+    if (!proposal) {
+      return res.status(400).json({ detail: 'proposal / message is required' })
+    }
+    if (!estimated_cost) {
+      return res.status(400).json({ detail: 'estimated_cost / proposed_fee is required' })
     }
 
     const project = await Project.findById(req.params.id)

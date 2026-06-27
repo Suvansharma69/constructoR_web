@@ -30,16 +30,18 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       if (!material) {
         return res.status(404).json({ detail: `Material ${item.material_id} not found` })
       }
-      if (material.stock < item.quantity) {
-        return res.status(400).json({ detail: `Insufficient stock for ${material.name}` })
+      // Null/undefined stock means vendor hasn't set a stock limit — allow purchase
+      if (material.stock != null && material.stock < item.quantity) {
+        return res.status(400).json({ detail: `Insufficient stock for ${material.name} (available: ${material.stock})` })
       }
-      // Use server-side price — ignore any price sent by client
       total += material.price * item.quantity
 
-      // Update stock
-      material.stock -= item.quantity
-      material.in_stock = material.stock > 0
-      await material.save()
+      // Only decrement stock if stock tracking is enabled
+      if (material.stock != null) {
+        material.stock = Math.max(0, material.stock - item.quantity)
+        material.in_stock = material.stock > 0
+        await material.save()
+      }
     }
 
     const order = new Order({

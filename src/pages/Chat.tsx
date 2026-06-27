@@ -6,6 +6,7 @@ import { useToast } from '../components/Toast'
 import { getConversations, getConversation, sendMessage, BACKEND_URL } from '../api/api'
 
 interface Message { _id:string; sender_id:string; receiver_id:string; message:string; created_at:string; read:boolean }
+interface ConvRaw { user: { _id:string; profile:any; role:string } | null; last_message?:any; unread_count:number }
 interface Conversation { partner_id:string; partner_name:string; partner_role:string; last_message?:any; unread_count:number }
 
 const ROLE_EMOJI: Record<string,string> = { homeowner:'🏠', architect:'📐', contractor:'🔨', interior_designer:'🎨', vendor:'🏪' }
@@ -25,25 +26,47 @@ export default function Chat() {
   const socketRef = useRef<Socket | null>(null)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  // Connect socket
+  // Connect socket with JWT auth
   useEffect(() => {
     if (!user) return
-    const socket = io(BACKEND_URL, { transports: ['websocket','polling'] })
+    const token = localStorage.getItem('be_token')
+    const socket = io(BACKEND_URL, {
+      transports: ['websocket','polling'],
+      auth: { token },
+    })
     socketRef.current = socket
     socket.on('connect', () => {
-      socket.emit('join_room', { user_id: user._id })
+      // server auto-identifies user from the token in socket.handshake.auth
     })
-    socket.on('new_message', (msg: Message) => {
+    socket.on('receive_message', (msg: Message) => {
       if (msg.sender_id === activeId || msg.receiver_id === activeId) {
         setMsgs(prev => [...prev, msg])
       }
       loadConvs()
     })
-    return () => { socket.emit('leave_room', { user_id: user._id }); socket.disconnect() }
+    socket.on('connect_error', (err) => {
+      console.warn('Socket connect error:', err.message)
+    })
+    return () => { socket.disconnect() }
   }, [user, activeId])
 
   const loadConvs = () => {
-    getConversations(user!._id).then(r => setConvs(r.data)).catch(() => {}).finally(() => setLoading(false))
+    getConversations(user!._id)
+      .then(r => {
+        const raw: ConvRaw[] = r.data || []
+        const mapped: Conversation[] = raw
+          .filter(c => c.user)
+          .map(c => ({
+            partner_id:   c.user!._id,
+            partner_name: c.user!.profile?.name || c.user!.profile?.shop_name || 'User',
+            partner_role: c.user!.role || '',
+            last_message: c.last_message,
+            unread_count: c.unread_count || 0,
+          }))
+        setConvs(mapped)
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
   }
 
   useEffect(() => { if (user) loadConvs() }, [user])

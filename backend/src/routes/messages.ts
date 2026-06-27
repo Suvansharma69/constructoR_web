@@ -1,26 +1,28 @@
-import express from 'express'
+import express, { Response } from 'express'
+import { body, validationResult } from 'express-validator'
 import Message from '../models/Message.js'
 import User from '../models/User.js'
 import { AuthRequest, authenticate } from '../middleware/auth.js'
 
 const router = express.Router()
 
+const validate = (req: express.Request, res: express.Response): boolean => {
+  const errors = validationResult(req)
+  if (!errors.isEmpty()) {
+    res.status(400).json({ detail: errors.array()[0].msg })
+    return false
+  }
+  return true
+}
+
 // Send message
-router.post('/', authenticate, async (req: AuthRequest, res) => {
+router.post('/', authenticate, [
+  body('receiver_id').isString().isLength({ min: 1, max: 100 }).trim().withMessage('receiver_id is required'),
+  body('message').isString().isLength({ min: 1, max: 2000 }).trim().withMessage('Message must be 1-2000 characters'),
+], async (req: AuthRequest, res: Response) => {
+  if (!validate(req, res)) return
   try {
     const { receiver_id, message } = req.body
-
-    if (!receiver_id || !message) {
-      return res.status(400).json({ detail: 'Receiver ID and message are required' })
-    }
-
-    // Validate message length — prevent abuse
-    if (typeof message !== 'string' || message.trim().length === 0) {
-      return res.status(400).json({ detail: 'Message cannot be empty' })
-    }
-    if (message.length > 2000) {
-      return res.status(400).json({ detail: 'Message too long (max 2000 characters)' })
-    }
 
     // Prevent messaging yourself
     if (receiver_id === req.userId) {

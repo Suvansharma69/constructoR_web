@@ -3,12 +3,34 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>BuildEase — Construction Platform</title>
-    <meta name="description" content="Connect with verified architects, contractors, designers and order materials." />
+    <title>constructoR — India's Construction Platform</title>
+    <meta name="description" content="Connect with verified architects, contractors, interior designers and order construction materials across India." />
+    <meta name="theme-color" content="#0D0F12" />
+
+    <!-- X-Frame-Options and X-Content-Type-Options must be HTTP headers, not meta tags -->
+    <meta name="referrer" content="strict-origin-when-cross-origin" />
+    <meta http-equiv="Content-Security-Policy" content="
+      default-src 'self';
+      script-src 'self' 'unsafe-inline' 'unsafe-eval' https://www.gstatic.com https://accounts.google.com;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      font-src 'self' https://fonts.gstatic.com;
+      img-src 'self' data: blob: https: http://localhost:8000;
+      connect-src 'self' http://localhost:8000 ws://localhost:8000 https://*.googleapis.com https://*.firebase.com https://*.firebaseio.com;
+      frame-src https://accounts.google.com;
+    " />
+
+    <!-- SEO -->
+    <meta property="og:title" content="constructoR — India's Construction Platform" />
+    <meta property="og:description" content="Connect with verified architects, contractors, interior designers and order construction materials." />
+    <meta property="og:type" content="website" />
+
+    <!-- Favicon -->
     <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🏗️</text></svg>" />
+
+    <!-- Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Outfit:wght@700;800;900&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900&family=Outfit:wght@700;800;900&display=swap" rel="stylesheet" />
   </head>
   <body>
     <div id="root"></div>

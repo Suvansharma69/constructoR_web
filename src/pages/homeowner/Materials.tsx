@@ -1,168 +1,255 @@
 import { useState, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../../store/auth'
 import { useToast } from '../../components/Toast'
 import { getMaterials, createOrder } from '../../api/api'
 
+interface Material {
+  _id:string; name:string; category:string; price:number; unit:string;
+  brand?:string; stock:number; in_stock:boolean; vendor_name?:string; city?:string; images?:string[]
+}
+
+const CATEGORY_EMOJI: Record<string, string> = {
+  Cement:'🏗️', Steel:'⚙️', Bricks:'🧱', Tiles:'🔲', Electrical:'⚡', Plumbing:'🚿',
+  Paint:'🎨', Hardware:'🔩', Flooring:'🪟', 'Doors & Windows':'🚪',
+}
+
 const CATEGORIES = ['All','Cement','Steel','Bricks','Tiles','Electrical','Plumbing','Paint','Hardware','Flooring','Doors & Windows']
-const CAT_ICONS: Record<string,string> = { Cement:'🪨',Steel:'🔩',Bricks:'🧱',Tiles:'🔲',Electrical:'⚡',Plumbing:'💧',Paint:'🎨',Hardware:'🔧',Flooring:'🪵','Doors & Windows':'🚪' }
-const CAT_COLORS: Record<string,string> = { Cement:'#6B7280',Steel:'#3B82F6',Bricks:'#EF4444',Tiles:'#8B5CF6',Electrical:'#F59E0B',Plumbing:'#06B6D4',Paint:'#EC4899',Hardware:'#78716C',Flooring:'#10B981','Doors & Windows':'#D97706' }
 
-interface Material { _id:string; name:string; category:string; price:number; unit:string; brand?:string; description?:string; stock?:number; in_stock?:boolean; vendor_name?:string; city?:string }
-interface CartItem { material: Material; qty: number }
+function SkeletonCard() {
+  return (
+    <div className="skeleton-card">
+      <div style={{ display:'flex', gap:12, marginBottom:12 }}>
+        <div className="skeleton" style={{ width:44, height:44, borderRadius:10 }} />
+        <div style={{ flex:1 }}>
+          <div className="skeleton skeleton-title" />
+          <div className="skeleton skeleton-text" style={{ width:'50%' }} />
+        </div>
+      </div>
+      <div className="skeleton skeleton-text" />
+      <div style={{ display:'flex', justifyContent:'space-between', marginTop:12 }}>
+        <div className="skeleton" style={{ width:80, height:22, borderRadius:6 }} />
+        <div className="skeleton" style={{ width:90, height:30, borderRadius:8 }} />
+      </div>
+    </div>
+  )
+}
 
-export default function Materials() {
+export default function HomeownerMaterials() {
   const { user } = useAuth()
   const { toast } = useToast()
-  const navigate = useNavigate()
   const [materials, setMaterials] = useState<Material[]>([])
-  const [category, setCategory] = useState('All')
-  const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
-  const [cart, setCart] = useState<CartItem[]>([])
-  const [showCart, setShowCart] = useState(false)
-  const [address, setAddress] = useState('')
+  const [activeCategory, setActiveCategory] = useState('All')
+  const [search, setSearch] = useState('')
+  const [cart, setCart] = useState<Map<string, number>>(new Map())
   const [ordering, setOrdering] = useState(false)
+  const [deliveryAddress, setDeliveryAddress] = useState('')
+  const [showCart, setShowCart] = useState(false)
 
   useEffect(() => {
-    getMaterials().then(r => setMaterials(r.data)).catch(() => toast('Failed to load materials','error')).finally(() => setLoading(false))
+    getMaterials()
+      .then(r => setMaterials(r.data || []))
+      .catch(() => toast('Failed to load materials', 'error'))
+      .finally(() => setLoading(false))
   }, [])
 
   const filtered = materials.filter(m => {
-    const matchCat = category === 'All' || m.category === category
-    const matchSearch = !search || m.name.toLowerCase().includes(search.toLowerCase()) || m.brand?.toLowerCase().includes(search.toLowerCase())
-    return matchCat && matchSearch
+    const catOk = activeCategory === 'All' || m.category === activeCategory
+    const searchOk = !search ||
+      m.name.toLowerCase().includes(search.toLowerCase()) ||
+      m.brand?.toLowerCase().includes(search.toLowerCase()) ||
+      m.vendor_name?.toLowerCase().includes(search.toLowerCase())
+    return catOk && searchOk
   })
 
-  const addToCart = (mat: Material) => {
-    setCart(p => {
-      const ex = p.find(c => c.material._id === mat._id)
-      if (ex) return p.map(c => c.material._id === mat._id ? {...c, qty: c.qty+1} : c)
-      return [...p, {material: mat, qty: 1}]
-    })
-    toast(`${mat.name} added to cart 🛒`, 'success')
+  const addToCart = (id: string) => {
+    setCart(prev => new Map(prev).set(id, (prev.get(id) || 0) + 1))
+    toast('Added to cart', 'success')
+  }
+  const removeFromCart = (id: string) => {
+    setCart(prev => { const m = new Map(prev); const n = (m.get(id)||0)-1; if(n<=0) m.delete(id); else m.set(id,n); return m })
   }
 
-  const removeFromCart = (id: string) => setCart(p => p.filter(c => c.material._id !== id))
-
-  const totalAmount = cart.reduce((s,c) => s + c.material.price * c.qty, 0)
+  const cartItems = [...cart.entries()].map(([id, qty]) => ({ mat: materials.find(m => m._id === id)!, qty })).filter(x => x.mat)
+  const cartTotal = cartItems.reduce((s,i) => s + i.mat.price * i.qty, 0)
+  const cartCount = [...cart.values()].reduce((a,b) => a+b, 0)
 
   const placeOrder = async () => {
-    if (!address.trim()) return toast('Please enter delivery address','error')
-    if (cart.length === 0) return
+    if (!deliveryAddress.trim()) { toast('Enter delivery address', 'error'); return }
     setOrdering(true)
     try {
       await createOrder(user!._id, {
-        items: cart.map(c => ({material_id: c.material._id, quantity: c.qty, price: c.material.price})),
-        delivery_address: address,
-        total_amount: totalAmount,
+        items: cartItems.map(i => ({ material_id: i.mat._id, quantity: i.qty, price: i.mat.price })),
+        delivery_address: deliveryAddress.trim(),
+        total_amount: cartTotal,
       })
-      toast('Order placed successfully! 🎉','success')
-      setCart([])
+      setCart(new Map())
       setShowCart(false)
-      setAddress('')
-      navigate('/homeowner/orders')
-    } catch (e: any) {
-      toast(e.response?.data?.detail || 'Failed to place order','error')
+      setDeliveryAddress('')
+      toast('Order placed successfully! 🎉', 'success')
+    } catch(e: any) {
+      toast(e.response?.data?.detail || 'Order failed', 'error')
     } finally { setOrdering(false) }
   }
 
-  if (loading) return <div className="spinner-wrap"><div className="spinner" /></div>
-
   return (
-    <div>
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:20,flexWrap:'wrap',gap:12}}>
+    <div className="page-enter">
+      {/* Header */}
+      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', flexWrap:'wrap', gap:12, marginBottom:24 }}>
         <div>
-          <h1 style={{fontSize:28,fontWeight:900,marginBottom:4}}>🧱 Material Marketplace</h1>
-          <p style={{color:'var(--text-muted)'}}>{materials.length} products from verified vendors</p>
+          <h1 className="page-title">🏪 Material Marketplace</h1>
+          <p className="page-subtitle">{materials.length} products from verified vendors</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowCart(true)} style={{position:'relative'}}>
-          🛒 Cart {cart.length > 0 && <span className="badge badge-red" style={{position:'absolute',top:-8,right:-8}}>{cart.reduce((s,c)=>s+c.qty,0)}</span>}
-        </button>
+        {cartCount > 0 && (
+          <button
+            className="btn btn-primary"
+            onClick={() => setShowCart(true)}
+            style={{ position:'relative' }}
+          >
+            🛒 Cart
+            <span style={{ background:'var(--danger)', borderRadius:10, padding:'1px 7px', fontSize:11, fontWeight:800 }}>{cartCount}</span>
+            <span style={{ fontSize:12, opacity:0.8 }}>₹{cartTotal.toLocaleString('en-IN')}</span>
+          </button>
+        )}
       </div>
 
+      {/* Search */}
       <div className="search-bar">
-        <span>🔍</span>
-        <input placeholder="Search materials, brands..." value={search} onChange={e => setSearch(e.target.value)} />
-        {search && <button style={{background:'none',color:'var(--text-muted)',fontSize:18}} onClick={() => setSearch('')}>✕</button>}
+        <span className="search-icon">🔍</span>
+        <input
+          placeholder="Search materials, brands, vendors..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+        />
+        {search && <button style={{ background:'none', color:'var(--text-muted)', fontSize:16 }} onClick={() => setSearch('')}>✕</button>}
       </div>
 
+      {/* Category filters */}
       <div className="filter-chips">
-        {CATEGORIES.map(c => (
-          <button key={c} className={`chip ${category === c ? 'active' : ''}`} onClick={() => setCategory(c)}>
-            {CAT_ICONS[c] || ''} {c}
+        {CATEGORIES.map(cat => (
+          <button key={cat} className={`chip ${activeCategory === cat ? 'active' : ''}`} onClick={() => setActiveCategory(cat)}>
+            {CATEGORY_EMOJI[cat] || ''} {cat}
           </button>
         ))}
       </div>
 
-      {filtered.length === 0 ? (
-        <div className="empty-state"><div className="empty-icon">🧱</div><h3>No materials found</h3></div>
+      {/* Results count */}
+      {!loading && (
+        <div style={{ fontSize:12, color:'var(--text-muted)', marginBottom:16 }}>
+          {filtered.length} {activeCategory !== 'All' ? activeCategory : ''} products
+          {search && ` matching "${search}"`}
+        </div>
+      )}
+
+      {/* Grid */}
+      {loading ? (
+        <div className="grid-3">
+          {[1,2,3,4,5,6].map(i => <SkeletonCard key={i} />)}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-icon">🏪</div>
+          <h3>No materials found</h3>
+          <p>{search ? 'Try a different search term' : 'No materials in this category yet'}</p>
+          {(search || activeCategory !== 'All') && (
+            <button className="btn btn-outline btn-sm" onClick={() => { setSearch(''); setActiveCategory('All') }}>Clear filters</button>
+          )}
+        </div>
       ) : (
         <div className="grid-3">
-          {filtered.map(mat => (
-            <div key={mat._id} className="mat-card">
+          {filtered.map(m => (
+            <div key={m._id} className="mat-card">
               <div className="mat-top">
-                <div className="mat-icon" style={{background:`${CAT_COLORS[mat.category] || '#4F46E5'}20`}}>
-                  {CAT_ICONS[mat.category] || '📦'}
+                <div className="mat-icon">
+                  {CATEGORY_EMOJI[m.category] || '📦'}
                 </div>
-                <div style={{flex:1}}>
-                  <div className="mat-name">{mat.name}</div>
-                  {mat.brand && <div className="mat-brand">{mat.brand}</div>}
+                <div style={{ flex:1, minWidth:0 }}>
+                  <div className="mat-name" style={{ whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{m.name}</div>
+                  {m.brand && <div className="mat-brand">{m.brand}</div>}
+                  {m.vendor_name && <div className="mat-vendor">🏪 {m.vendor_name}{m.city && ` · ${m.city}`}</div>}
                 </div>
               </div>
-              <span className="badge badge-blue" style={{marginBottom:8}}>{mat.category}</span>
-              {mat.description && <p style={{fontSize:12,color:'var(--text-muted)',marginBottom:8,lineHeight:1.5}}>{mat.description}</p>}
-              {mat.vendor_name && <p style={{fontSize:11,color:'var(--text-faint)',marginBottom:8}}>🏪 {mat.vendor_name} {mat.city && `· ${mat.city}`}</p>}
+
+              <div style={{ display:'flex', gap:6, flexWrap:'wrap', marginBottom:8 }}>
+                <span className="badge badge-grey">{m.category}</span>
+                <span className={`badge ${m.in_stock ? 'badge-green' : 'badge-red'}`}>
+                  {m.in_stock ? `✓ In Stock${m.stock > 0 ? ` (${m.stock})` : ''}` : 'Out of Stock'}
+                </span>
+              </div>
+
               <div className="mat-footer">
                 <div>
-                  <div className="mat-price" style={{color:CAT_COLORS[mat.category]||'var(--primary)'}}>₹{mat.price}<span style={{fontSize:12,fontWeight:400,color:'var(--text-muted)'}}> /{mat.unit||'unit'}</span></div>
-                  <div className={`mat-stock badge ${mat.in_stock !== false ? 'badge-green' : 'badge-red'}`}>
-                    {mat.in_stock !== false ? '✅ In Stock' : '❌ Out'}
-                  </div>
+                  <div className="mat-price">₹{m.price.toLocaleString('en-IN')} <span>/{m.unit}</span></div>
                 </div>
-                <button className="btn btn-sm btn-primary" onClick={() => addToCart(mat)} disabled={mat.in_stock === false}>
-                  Add 🛒
-                </button>
+                {m.in_stock ? (
+                  <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                    {cart.get(m._id) ? (
+                      <>
+                        <button className="btn btn-xs btn-ghost" onClick={() => removeFromCart(m._id)}>−</button>
+                        <span style={{ fontSize:13, fontWeight:700, minWidth:20, textAlign:'center' }}>{cart.get(m._id)}</span>
+                        <button className="btn btn-xs btn-primary" onClick={() => addToCart(m._id)}>+</button>
+                      </>
+                    ) : (
+                      <button className="btn btn-sm btn-primary" onClick={() => addToCart(m._id)}>Add to Cart</button>
+                    )}
+                  </div>
+                ) : (
+                  <button className="btn btn-sm btn-ghost" disabled>Out of Stock</button>
+                )}
               </div>
             </div>
           ))}
         </div>
       )}
 
-      {/* Cart Modal */}
+      {/* Cart modal */}
       {showCart && (
-        <div className="modal-overlay" onClick={e => { if (e.target === e.currentTarget) setShowCart(false) }}>
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCart(false)}>
           <div className="modal-box">
             <div className="modal-header">
-              <span className="modal-title">🛒 Your Cart ({cart.reduce((s,c)=>s+c.qty,0)} items)</span>
+              <div className="modal-title">🛒 Your Cart ({cartCount} items)</div>
               <button className="modal-close" onClick={() => setShowCart(false)}>✕</button>
             </div>
-            {cart.length === 0 ? (
-              <div className="empty-state"><div className="empty-icon">🛒</div><h3>Cart is empty</h3></div>
-            ) : (
-              <>
-                {cart.map(item => (
-                  <div key={item.material._id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 0',borderBottom:'1px solid var(--border)'}}>
-                    <div style={{fontSize:24}}>{CAT_ICONS[item.material.category]||'📦'}</div>
-                    <div style={{flex:1}}>
-                      <div style={{fontWeight:700,fontSize:14}}>{item.material.name}</div>
-                      <div style={{fontSize:12,color:'var(--text-muted)'}}>₹{item.material.price} × {item.qty} = ₹{(item.material.price*item.qty).toLocaleString('en-IN')}</div>
-                    </div>
-                    <button className="btn btn-xs btn-danger" onClick={() => removeFromCart(item.material._id)}>✕</button>
+
+            <div style={{ display:'flex', flexDirection:'column', gap:10, marginBottom:18 }}>
+              {cartItems.map(({ mat, qty }) => (
+                <div key={mat._id} style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 12px', background:'var(--surface2)', borderRadius:'var(--radius-sm)', border:'1px solid var(--border)' }}>
+                  <span style={{ fontSize:18 }}>{CATEGORY_EMOJI[mat.category] || '📦'}</span>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight:700, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{mat.name}</div>
+                    <div style={{ fontSize:11, color:'var(--text-muted)' }}>₹{mat.price.toLocaleString('en-IN')}/{mat.unit} × {qty}</div>
                   </div>
-                ))}
-                <div style={{fontFamily:'Outfit',fontSize:20,fontWeight:900,textAlign:'right',margin:'16px 0',color:'var(--secondary)'}}>
-                  Total: ₹{totalAmount.toLocaleString('en-IN')}
+                  <div style={{ fontFamily:'Outfit,sans-serif', fontWeight:900, fontSize:15, color:'var(--accent-light)' }}>
+                    ₹{(mat.price * qty).toLocaleString('en-IN')}
+                  </div>
+                  <button className="btn btn-xs btn-ghost" style={{ color:'var(--danger)' }} onClick={() => removeFromCart(mat._id)}>✕</button>
                 </div>
-                <div className="form-group">
-                  <label className="form-label">Delivery Address *</label>
-                  <textarea className="form-input form-textarea" placeholder="Enter full delivery address" value={address} onChange={e => setAddress(e.target.value)} />
-                </div>
-                <button className="btn btn-primary btn-full" onClick={placeOrder} disabled={ordering}>
-                  {ordering ? 'Placing Order...' : '✅ Place Order'}
-                </button>
-              </>
-            )}
+              ))}
+            </div>
+
+            <div style={{ background:'var(--surface2)', borderRadius:'var(--radius-sm)', padding:'14px 16px', marginBottom:16, border:'1px solid var(--border)' }}>
+              <div style={{ display:'flex', justifyContent:'space-between', fontWeight:700 }}>
+                <span>Total</span>
+                <span style={{ fontFamily:'Outfit,sans-serif', fontSize:18, color:'var(--success)' }}>₹{cartTotal.toLocaleString('en-IN')}</span>
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">Delivery Address *</label>
+              <textarea
+                className="form-input form-textarea"
+                placeholder="Enter your full delivery address..."
+                value={deliveryAddress}
+                onChange={e => setDeliveryAddress(e.target.value)}
+              />
+            </div>
+
+            <div className="modal-footer">
+              <button className="btn btn-ghost" onClick={() => setShowCart(false)}>Continue Shopping</button>
+              <button className="btn btn-success" onClick={placeOrder} disabled={ordering || !deliveryAddress.trim()}>
+                {ordering ? 'Placing Order...' : `Place Order · ₹${cartTotal.toLocaleString('en-IN')}`}
+              </button>
+            </div>
           </div>
         </div>
       )}

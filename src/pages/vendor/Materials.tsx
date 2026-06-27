@@ -4,6 +4,10 @@ import { useToast } from '../../components/Toast'
 import { getVendorMaterials, createMaterial, deleteMaterial } from '../../api/api'
 
 const CATEGORIES = ['Cement','Steel','Bricks','Tiles','Electrical','Plumbing','Paint','Hardware','Flooring','Doors & Windows']
+const CATEGORY_EMOJI: Record<string, string> = {
+  Cement:'🏗️', Steel:'⚙️', Bricks:'🧱', Tiles:'🔲', Electrical:'⚡',
+  Plumbing:'🚿', Paint:'🎨', Hardware:'🔩', Flooring:'🪟', 'Doors & Windows':'🚪',
+}
 
 interface Material {
   _id: string; name: string; category: string; price: number;
@@ -66,16 +70,32 @@ export default function VendorMaterials() {
     finally { setDeleting(false) }
   }
 
-  if (loading) return <div className="spinner-wrap"><div className="spinner" /></div>
+  if (loading) return (
+    <div>
+      {[1,2,3,4].map(i => (
+        <div key={i} className="skeleton-card" style={{ marginBottom:10 }}>
+          <div style={{ display:'flex', gap:12, alignItems:'center' }}>
+            <div className="skeleton" style={{ width:44, height:44, borderRadius:10 }} />
+            <div style={{ flex:1 }}>
+              <div className="skeleton skeleton-title" />
+              <div className="skeleton skeleton-text" style={{ width:'40%' }} />
+            </div>
+            <div className="skeleton" style={{ width:80, height:22, borderRadius:6 }} />
+            <div className="skeleton" style={{ width:64, height:30, borderRadius:8 }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 
   return (
-    <div>
-      <div className="flex-between mb-20">
+    <div className="page-enter">
+      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', flexWrap:'wrap', gap:12, marginBottom:24 }}>
         <div>
-          <div className="page-title">Products</div>
-          <div className="page-subtitle">{mats.length} product{mats.length !== 1 ? 's' : ''} listed</div>
+          <h1 className="page-title">🧱 My Products</h1>
+          <p className="page-subtitle">{mats.length} product{mats.length !== 1 ? 's' : ''} listed</p>
         </div>
-        <button className="btn btn-primary" onClick={() => setShowAddModal(true)}>
+        <button className="btn btn-sm" style={{ background:'linear-gradient(135deg,#F97316,#C2410C)', color:'white' }} onClick={() => setShowAddModal(true)}>
           + Add Product
         </button>
       </div>
@@ -90,37 +110,24 @@ export default function VendorMaterials() {
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {mats.map(m => (
-            <div key={m._id} className="card" style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-              <div style={{
-                width: 44, height: 44, borderRadius: 10,
-                background: 'var(--surface2)', display: 'flex',
-                alignItems: 'center', justifyContent: 'center',
-                fontSize: 20, flexShrink: 0, color: 'var(--text-muted)'
-              }}>
-                ◫
+            <div key={m._id} style={{ display:'flex', alignItems:'center', gap:14, padding:'14px 18px', background:'var(--surface)', border:'1px solid var(--border)', borderRadius:'var(--radius-sm)' }}>
+              <div style={{ width:44, height:44, borderRadius:10, background:'rgba(249,115,22,0.1)', border:'1px solid rgba(249,115,22,0.2)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:20, flexShrink:0 }}>
+                {CATEGORY_EMOJI[m.category] || '📦'}
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 2 }}>{m.name}</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-                  {m.category}{m.brand ? ` · ${m.brand}` : ''}
-                </div>
-                {m.description && (
-                  <div style={{ fontSize: 11, color: 'var(--text-faint)', marginTop: 2 }}>{m.description}</div>
-                )}
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontWeight:800, fontSize:14, marginBottom:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{m.name}</div>
+                <div style={{ fontSize:12, color:'var(--text-muted)' }}>{m.category}{m.brand ? ` · ${m.brand}` : ''}</div>
+                {m.description && <div style={{ fontSize:11, color:'var(--text-faint)', marginTop:2, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>{m.description}</div>}
               </div>
-              <div style={{ textAlign: 'right', marginRight: 8, flexShrink: 0 }}>
-                <div style={{ fontWeight: 800, fontSize: 16 }}>₹{m.price}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>/{m.unit || 'unit'}</div>
-                <span className={`badge ${m.in_stock !== false ? 'badge-green' : 'badge-red'}`} style={{ marginTop: 4, display: 'inline-flex' }}>
-                  {m.in_stock !== false ? 'In Stock' : 'Out of Stock'}
-                </span>
+              <div style={{ textAlign:'right', marginRight:8, flexShrink:0 }}>
+                <div style={{ fontFamily:'Outfit,sans-serif', fontWeight:900, fontSize:16, color:'#F97316' }}>₹{m.price.toLocaleString('en-IN')}</div>
+                <div style={{ fontSize:11, color:'var(--text-muted)' }}>/{m.unit || 'unit'}</div>
               </div>
-              <button
-                className="btn btn-ghost btn-sm"
-                onClick={() => setDeleteTarget(m)}
-                aria-label={`Delete ${m.name}`}
-              >
-                Delete
+              <span className={`badge ${m.in_stock !== false ? 'badge-green' : 'badge-red'}`}>
+                {m.in_stock !== false ? '✓ In Stock' : 'Out'}
+              </span>
+              <button className="btn btn-ghost btn-sm" style={{ color:'var(--danger)', flexShrink:0 }} onClick={() => setDeleteTarget(m)} aria-label={`Delete ${m.name}`}>
+                🗑️
               </button>
             </div>
           ))}

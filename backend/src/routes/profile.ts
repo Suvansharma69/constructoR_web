@@ -47,13 +47,17 @@ router.post('/professional/:id', authenticate, async (req: AuthRequest, res) => 
 
     const { name, city, experience, specializations, price_range, consultation_fee } = req.body
 
-    // Safely parse specializations JSON
+    // Accept both array (from JSON body) and JSON string forms
     let parsedSpecializations: string[] | undefined
     if (specializations) {
-      try {
-        parsedSpecializations = JSON.parse(specializations)
-      } catch {
-        return res.status(400).json({ detail: 'Invalid specializations format, expected JSON array' })
+      if (Array.isArray(specializations)) {
+        parsedSpecializations = specializations
+      } else if (typeof specializations === 'string') {
+        try {
+          parsedSpecializations = JSON.parse(specializations)
+        } catch {
+          return res.status(400).json({ detail: 'Invalid specializations format, expected JSON array' })
+        }
       }
     }
 
