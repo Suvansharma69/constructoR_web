@@ -28,6 +28,7 @@ const __dirname = path.dirname(__filename)
 
 const app = express()
 const httpServer = createServer(app)
+const connectedUsers = new Map<string, string>()
 
 // ─── Allowed Origins ─────────────────────────────────────────────────────────
 const allowedOrigins: string[] = [
@@ -90,6 +91,8 @@ const io = new SocketIOServer(httpServer, {
   },
   maxHttpBufferSize: 1e5, // 100KB max socket message
 })
+app.locals.io = io
+app.locals.connectedUsers = connectedUsers
 
 const PORT = process.env.PORT || 8000
 
@@ -164,8 +167,6 @@ app.use('/api/orders', generalLimiter, ordersRoutes)
 app.use('/api/messages', generalLimiter, messagesRoutes)
 
 // ─── Socket.IO Auth + Events ──────────────────────────────────────────────────
-const connectedUsers = new Map<string, string>()
-
 io.use(async (socket, next) => {
   const token = socket.handshake.auth?.token as string | undefined
   if (!token) return next(new Error('Authentication required'))

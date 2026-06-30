@@ -1,6 +1,7 @@
 import express, { Request, Response } from 'express'
 import { body, validationResult } from 'express-validator'
 import Material from '../models/Material.js'
+import User from '../models/User.js'
 import { AuthRequest, authenticate } from '../middleware/auth.js'
 
 const router = express.Router()
@@ -80,6 +81,11 @@ router.post('/', authenticate, [
   if (!validate(req, res)) return
 
   try {
+    const user = await User.findById(req.userId).select('role')
+    if (!user || user.role !== 'vendor') {
+      return res.status(403).json({ detail: 'Only vendors can create materials' })
+    }
+
     const { name, category, brand, price, unit, description, stock, in_stock } = req.body
 
     const stockNum = (stock !== undefined && stock !== null && stock !== '') ? parseInt(stock) : 0
@@ -120,6 +126,11 @@ router.put('/:id', authenticate, [
   if (!validate(req, res)) return
 
   try {
+    const user = await User.findById(req.userId).select('role')
+    if (!user || user.role !== 'vendor') {
+      return res.status(403).json({ detail: 'Only vendors can update materials' })
+    }
+
     const material = await Material.findById(req.params.id)
     if (!material) return res.status(404).json({ detail: 'Material not found' })
     if (material.vendor_id.toString() !== req.userId) return res.status(403).json({ detail: 'Not authorized' })
@@ -149,6 +160,11 @@ router.put('/:id', authenticate, [
 // ─── Delete material ──────────────────────────────────────────────────────────
 router.delete('/:id', authenticate, async (req: AuthRequest, res) => {
   try {
+    const user = await User.findById(req.userId).select('role')
+    if (!user || user.role !== 'vendor') {
+      return res.status(403).json({ detail: 'Only vendors can delete materials' })
+    }
+
     const material = await Material.findById(req.params.id)
     if (!material) return res.status(404).json({ detail: 'Material not found' })
     if (material.vendor_id.toString() !== req.userId) return res.status(403).json({ detail: 'Not authorized' })

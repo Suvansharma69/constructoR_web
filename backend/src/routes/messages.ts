@@ -41,6 +41,12 @@ router.post('/', authenticate, [
       .populate('sender_id', 'profile')
       .populate('receiver_id', 'profile')
 
+    const connectedUsers = req.app.locals.connectedUsers as Map<string, string> | undefined
+    const receiverSocketId = connectedUsers?.get(receiver_id)
+    if (receiverSocketId && populatedMessage) {
+      req.app.locals.io?.to(receiverSocketId).emit('receive_message', populatedMessage)
+    }
+
     res.json(populatedMessage)
   } catch (error) {
     console.error('Send message error:', error)

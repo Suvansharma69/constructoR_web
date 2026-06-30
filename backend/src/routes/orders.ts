@@ -1,13 +1,20 @@
 import express from 'express'
 import Order from '../models/Order.js'
 import Material from '../models/Material.js'
+import User from '../models/User.js'
 import { AuthRequest, authenticate } from '../middleware/auth.js'
 
 const router = express.Router()
 
-// Create order
 router.post('/', authenticate, async (req: AuthRequest, res) => {
+  const decrementedItems: { material_id: string; quantity: number }[] = []
+
   try {
+    const user = await User.findById(req.userId).select('role')
+    if (!user || user.role !== 'homeowner') {
+      return res.status(403).json({ detail: 'Only homeowners can place material orders' })
+    }
+
     const { items, delivery_address } = req.body
 
     if (!items || !Array.isArray(items) || items.length === 0) {
@@ -20,35 +27,47 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
       return res.status(400).json({ detail: 'Valid delivery address is required (min 10 chars)' })
     }
 
-    // Calculate total server-side — never trust client-sent prices
     let total = 0
+    const orderItems: { material_id: string; quantity: number; price: number }[] = []
+
     for (const item of items) {
-      if (!item.material_id || !item.quantity || item.quantity < 1) {
+      const quantity = Number(item.quantity)
+      if (!item.material_id || !Number.isInteger(quantity) || quantity < 1) {
         return res.status(400).json({ detail: 'Each item needs a valid material_id and quantity >= 1' })
       }
+
       const material = await Material.findById(item.material_id)
       if (!material) {
         return res.status(404).json({ detail: `Material ${item.material_id} not found` })
       }
-      // Null/undefined stock means vendor hasn't set a stock limit — allow purchase
-      if (material.stock != null && material.stock < item.quantity) {
+      if (!material.in_stock || material.stock < quantity) {
         return res.status(400).json({ detail: `Insufficient stock for ${material.name} (available: ${material.stock})` })
       }
-      total += material.price * item.quantity
 
-      // Only decrement stock if stock tracking is enabled
-      if (material.stock != null) {
-        material.stock = Math.max(0, material.stock - item.quantity)
-        material.in_stock = material.stock > 0
-        await material.save()
+      const updatedMaterial = await Material.findOneAndUpdate(
+        { _id: item.material_id, in_stock: true, stock: { $gte: quantity } },
+        { $inc: { stock: -quantity } },
+        { new: true }
+      )
+      if (!updatedMaterial) {
+        throw new Error(`Insufficient stock for ${material.name}`)
       }
+
+      decrementedItems.push({ material_id: item.material_id, quantity })
+      if (updatedMaterial.stock <= 0) {
+        updatedMaterial.in_stock = false
+        await updatedMaterial.save()
+      }
+
+      total += material.price * quantity
+      orderItems.push({ material_id: item.material_id, quantity, price: material.price })
     }
 
     const order = new Order({
       user_id: req.userId,
-      items,
+      items: orderItems,
       delivery_address: delivery_address.trim(),
-      total_amount: total, // always server-calculated
+      total_amount: total,
     })
 
     await order.save()
@@ -60,14 +79,18 @@ router.post('/', authenticate, async (req: AuthRequest, res) => {
     res.json(populatedOrder)
   } catch (error) {
     console.error('Create order error:', error)
-    res.status(500).json({ detail: 'Failed to create order' })
+    await Promise.all(decrementedItems.map(item =>
+      Material.updateOne(
+        { _id: item.material_id },
+        { $inc: { stock: item.quantity }, $set: { in_stock: true } }
+      )
+    ))
+    res.status(500).json({ detail: error instanceof Error ? error.message : 'Failed to create order' })
   }
 })
 
-// Get user's orders — only the owner can view their orders
 router.get('/user/:id', authenticate, async (req: AuthRequest, res) => {
   try {
-    // IDOR protection
     if (req.userId !== req.params.id) {
       return res.status(403).json({ detail: 'Forbidden' })
     }
@@ -82,12 +105,15 @@ router.get('/user/:id', authenticate, async (req: AuthRequest, res) => {
   }
 })
 
-// Get vendor's orders — only the vendor themselves
 router.get('/vendor/:id', authenticate, async (req: AuthRequest, res) => {
   try {
-    // IDOR protection
     if (req.userId !== req.params.id) {
       return res.status(403).json({ detail: 'Forbidden' })
+    }
+
+    const user = await User.findById(req.userId).select('role')
+    if (!user || user.role !== 'vendor') {
+      return res.status(403).json({ detail: 'Only vendors can view vendor orders' })
     }
 
     const materials = await Material.find({ vendor_id: req.params.id }).select('_id')
@@ -107,7 +133,6 @@ router.get('/vendor/:id', authenticate, async (req: AuthRequest, res) => {
   }
 })
 
-// Update order status — only the vendor of that order's materials can update
 router.put('/:id/status', authenticate, async (req: AuthRequest, res) => {
   try {
     const { status } = req.body
@@ -122,7 +147,6 @@ router.put('/:id/status', authenticate, async (req: AuthRequest, res) => {
       return res.status(404).json({ detail: 'Order not found' })
     }
 
-    // Only the buyer can cancel their own order, only a vendor whose material is in the order can update status
     const isBuyer = order.user_id.toString() === req.userId
     const isRelatedVendor = await Material.exists({
       _id: { $in: order.items.map((i: any) => i.material_id) },
@@ -132,8 +156,6 @@ router.put('/:id/status', authenticate, async (req: AuthRequest, res) => {
     if (!isBuyer && !isRelatedVendor) {
       return res.status(403).json({ detail: 'Forbidden: not authorized to update this order' })
     }
-
-    // Buyers can only cancel, vendors can update to processing/delivered
     if (isBuyer && status !== 'cancelled') {
       return res.status(403).json({ detail: 'Buyers can only cancel orders' })
     }

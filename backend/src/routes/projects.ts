@@ -1,13 +1,20 @@
 import express from 'express'
 import Project from '../models/Project.js'
 import Bid from '../models/Bid.js'
+import User from '../models/User.js'
 import { AuthRequest, authenticate } from '../middleware/auth.js'
 
 const router = express.Router()
+const PROFESSIONAL_ROLES = ['architect', 'contractor', 'interior_designer']
 
 // Create project
 router.post('/', authenticate, async (req: AuthRequest, res) => {
   try {
+    const user = await User.findById(req.userId).select('role')
+    if (!user || user.role !== 'homeowner') {
+      return res.status(403).json({ detail: 'Only homeowners can create projects' })
+    }
+
     const { project_type, city, budget_range, description, plot_size, floors } = req.body
 
     if (!project_type || !city) {
@@ -50,6 +57,11 @@ router.get('/user/:id', authenticate, async (req: AuthRequest, res) => {
 router.get('/available/:role', authenticate, async (req: AuthRequest, res) => {
   try {
     const { role } = req.params
+    const user = await User.findById(req.userId).select('role')
+    if (!user || user.role !== role || !PROFESSIONAL_ROLES.includes(user.role)) {
+      return res.status(403).json({ detail: 'Only matching professional roles can browse these projects' })
+    }
+
     const cityRaw = req.query.city
     const city = typeof cityRaw === 'string' ? cityRaw.trim() : undefined
 
@@ -84,6 +96,11 @@ router.get('/available/:role', authenticate, async (req: AuthRequest, res) => {
 // Submit bid on project
 router.post('/:id/bid', authenticate, async (req: AuthRequest, res) => {
   try {
+    const user = await User.findById(req.userId).select('role')
+    if (!user || !PROFESSIONAL_ROLES.includes(user.role)) {
+      return res.status(403).json({ detail: 'Only professionals can bid on projects' })
+    }
+
     // Accept both naming conventions from frontend
     const proposal = req.body.proposal || req.body.message
     const estimated_cost = req.body.estimated_cost || req.body.proposed_fee
@@ -99,6 +116,9 @@ router.post('/:id/bid', authenticate, async (req: AuthRequest, res) => {
     const project = await Project.findById(req.params.id)
     if (!project) {
       return res.status(404).json({ detail: 'Project not found' })
+    }
+    if (project.user_id.toString() === req.userId) {
+      return res.status(400).json({ detail: 'You cannot bid on your own project' })
     }
 
     // Check if already bid

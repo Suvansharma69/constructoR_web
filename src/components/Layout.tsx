@@ -71,6 +71,12 @@ function getRoleAccent(role: string): string {
   return map[role] || 'var(--accent)'
 }
 
+function getProfilePath(role: string) {
+  if (role === 'vendor') return '/vendor/profile'
+  if (['architect', 'contractor', 'interior_designer'].includes(role)) return '/professional/profile'
+  return '/profile-setup'
+}
+
 export default function Layout({ children }: { children: React.ReactNode }) {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
@@ -100,6 +106,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   const initials = (displayName || 'U').charAt(0).toUpperCase()
   const activeItem = navItems.find(n => location.pathname.startsWith(n.to))
   const roleAccent = getRoleAccent(user.role)
+  const profilePath = getProfilePath(user.role)
 
   return (
     <div className="app-layout">
@@ -139,7 +146,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
         </nav>
 
         <div className="sidebar-footer">
-          <div className="user-info" onClick={() => navigate('/profile')}>
+          <div className="user-info" onClick={() => navigate(profilePath)}>
             <div className="user-avatar" style={{ background: `linear-gradient(135deg, ${roleAccent}, color-mix(in srgb, ${roleAccent} 60%, #000))` }}>
               {initials}
             </div>
@@ -184,7 +191,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <div
               className="user-avatar"
               style={{ cursor: 'pointer', background: `linear-gradient(135deg, ${roleAccent}, color-mix(in srgb, ${roleAccent} 60%, #000))` }}
-              onClick={() => navigate('/profile')}
+              onClick={() => navigate(profilePath)}
               title={displayName}
             >
               {initials}
