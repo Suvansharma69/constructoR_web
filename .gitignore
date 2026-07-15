@@ -6,6 +6,16 @@ node_modules/
 dist/
 build/
 backend/dist/
+*.tsbuildinfo
+build_out.txt
+**/build_out.txt
+tsc_out.txt
+tsc_errors.txt
+**/tsc_out.txt
+**/tsc_errors.txt
+coverage/
+.cache/
+.vite/
 
 # Environment files (NEVER commit these)
 .env
